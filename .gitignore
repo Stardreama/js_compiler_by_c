@@ -1,0 +1,66 @@
+# 编译生成的文件
+*.o
+*.obj
+*.exe
+*.out
+*.app
+
+# re2c 和 Bison 生成的文件
+lexer.c
+parser.c
+parser.h
+parser.output
+
+# 编译输出
+js_parser
+js_parser.exe
+
+# 调试文件
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# 依赖文件
+*.d
+
+# 编辑器和 IDE
+.vscode/
+.vs/
+*.swp
+*.swo
+*~
+.idea/
+*.sublime-*
+
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# 临时文件
+*.tmp
+*.temp
+*.log
+*.bak
+
+# 测试输出
+test_output/
+*.test
+
+# Build 目录
+build/
+bin/
+obj/
+
+# 其他
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
