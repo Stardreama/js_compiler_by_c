@@ -50,6 +50,8 @@ js_compiler_by_c/
 - 安装 MinGW 或 MSYS2
 - 安装 re2c: `pacman -S re2c`（MSYS2）或从官网下载
 - 安装 Bison: `pacman -S bison`（MSYS2）
+- 安装 make: `pacman -S make`（MSYS2）
+- 安装 gcc: `pacman -S gcc`（MSYS2）
 
 #### Linux/Mac 环境
 
