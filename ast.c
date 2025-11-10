@@ -276,6 +276,31 @@ ASTNode *ast_make_binary(const char *op, ASTNode *left, ASTNode *right) {
     return node;
 }
 
+ASTNode *ast_make_conditional(ASTNode *test, ASTNode *consequent, ASTNode *alternate) {
+    ASTNode *node = ast_alloc(AST_CONDITIONAL_EXPR);
+    node->data.conditional.test = test;
+    node->data.conditional.consequent = consequent;
+    node->data.conditional.alternate = alternate;
+    return node;
+}
+
+ASTNode *ast_make_sequence(ASTNode *left, ASTNode *right) {
+    if (!left) {
+        return right;
+    }
+    ASTNode *node = left;
+    if (left->type == AST_SEQUENCE_EXPR) {
+        node->data.sequence.elements = ast_list_append(node->data.sequence.elements, right);
+        return node;
+    }
+    node = ast_alloc(AST_SEQUENCE_EXPR);
+    ASTList *items = NULL;
+    items = ast_list_append(items, left);
+    items = ast_list_append(items, right);
+    node->data.sequence.elements = items;
+    return node;
+}
+
 ASTNode *ast_make_unary(const char *op, ASTNode *argument) {
     ASTNode *node = ast_alloc(AST_UNARY_EXPR);
     node->data.unary.op = op;
@@ -407,6 +432,14 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
         case AST_BINARY_EXPR:
             ast_traverse(node->data.binary.left, visitor, userdata);
             ast_traverse(node->data.binary.right, visitor, userdata);
+            break;
+        case AST_CONDITIONAL_EXPR:
+            ast_traverse(node->data.conditional.test, visitor, userdata);
+            ast_traverse(node->data.conditional.consequent, visitor, userdata);
+            ast_traverse(node->data.conditional.alternate, visitor, userdata);
+            break;
+        case AST_SEQUENCE_EXPR:
+            ast_traverse_list(node->data.sequence.elements, visitor, userdata);
             break;
         case AST_UNARY_EXPR:
             ast_traverse(node->data.unary.argument, visitor, userdata);
@@ -668,6 +701,26 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             printf("Right\n");
             ast_print_internal(node->data.binary.right, indent + 4);
             break;
+        case AST_CONDITIONAL_EXPR:
+            print_indent(indent);
+            printf("ConditionalExpression\n");
+            print_indent(indent + 2);
+            printf("Test\n");
+            ast_print_internal(node->data.conditional.test, indent + 4);
+            print_indent(indent + 2);
+            printf("Consequent\n");
+            ast_print_internal(node->data.conditional.consequent, indent + 4);
+            print_indent(indent + 2);
+            printf("Alternate\n");
+            ast_print_internal(node->data.conditional.alternate, indent + 4);
+            break;
+        case AST_SEQUENCE_EXPR:
+            print_indent(indent);
+            printf("SequenceExpression\n");
+            if (node->data.sequence.elements) {
+                ast_print_list(node->data.sequence.elements, indent + 2);
+            }
+            break;
         case AST_UNARY_EXPR:
             print_indent(indent);
             printf("UnaryExpression op=%s\n", node->data.unary.op ? node->data.unary.op : "");
@@ -839,6 +892,14 @@ void ast_free(ASTNode *node) {
         case AST_BINARY_EXPR:
             ast_free(node->data.binary.left);
             ast_free(node->data.binary.right);
+            break;
+        case AST_CONDITIONAL_EXPR:
+            ast_free(node->data.conditional.test);
+            ast_free(node->data.conditional.consequent);
+            ast_free(node->data.conditional.alternate);
+            break;
+        case AST_SEQUENCE_EXPR:
+            ast_list_free(node->data.sequence.elements);
             break;
         case AST_UNARY_EXPR:
             ast_free(node->data.unary.argument);
