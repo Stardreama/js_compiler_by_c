@@ -192,15 +192,14 @@ Syntax error: syntax error, unexpected STRING, expecting ':'
 
 **支持的表达式：**
 
-- 字面量（数字、字符串、布尔值）
-- 标识符
-- 一元运算（`+`, `-`, `!`, `~`）
-- 二元运算（算术、比较、逻辑）
-- 赋值运算 `=`
-- 成员访问 `obj.prop`
-- 函数调用 `func(a, b)`
-- 数组字面量 `[1, 2, 3]`
-- 对象字面量 `{ key: value }`
+- 字面量（数字、字符串、布尔值、`null`、`undefined`）
+- 标识符、成员访问与函数调用
+- 一元运算（`+`, `-`, `!`, `~`, `typeof`, `delete`, `void`）
+- 二元运算（算术、比较、逻辑、按位、位移）
+- 条件运算符 `cond ? expr : expr`
+- 复合赋值（`+=`, `-=`, `*=`, `/=`, `%=`、`&=`, `|=`, `^=`, `<<=`, `>>=`, `>>>=`）
+- 逗号表达式与序列表达式
+- 数组、对象字面量与属性构造
 - 括号分组 `(expr)`
 
 **错误检测能力：**
@@ -268,11 +267,11 @@ lexer.re:89:25: warning: unused variable 'comment_start'
 - [x] switch-case 语句
 - [x] try-catch-finally 异常处理、throw、with、标签语句
 
-### 优先级 P4 - 完整运算符支持
+### ✅ 优先级 P4 - 完整运算符支持
 
-- [ ] 三元运算符 `? :`
-- [ ] 完整的位运算支持
-- [ ] 复合赋值运算符
+- [x] 三元运算符 `? :`
+- [x] 完整的位运算与位移层级
+- [x] 复合赋值运算符与逗号表达式
 
 ### 优先级 P5 - 高级特性
 
@@ -290,7 +289,8 @@ lexer.re:89:25: warning: unused variable 'comment_start'
 - `tests/test_asi_control.js` - 与控制语句的协同 ✅
 - `tests/test_while.js` - while/do-while + break/continue + 标签 ✅
 - `tests/test_switch.js` - switch-case/default 场景 ✅
-- `tests/test_try.js` - try-catch-finally / throw / with ✅
+- `tests/test_try.js` - try-catch-finally / with ✅
+- `tests/test_operators.js` - 复合赋值、按位、三元与逗号组合 ✅
 - `tests/test_error_missing_semicolon.js` - 缺少分号错误测试 ✅
 - `tests/test_error_object.js` - 对象字面量错误测试 ✅
 - `tests/test_error_cases.js` - 错误用例集合（需逐个激活测试）
@@ -307,27 +307,34 @@ lexer.re:89:25: warning: unused variable 'comment_start'
 
 ```text
 js_compiler_by_c/
-├── token.h                   # Token 类型定义和结构体
-├── lexer.re                  # re2c 词法分析器源文件（374 行）
-├── lexer.c                   # re2c 生成的 C 代码（自动生成，勿编辑）
-├── main.c                    # 词法分析器主程序
-├── parser.y                  # Bison 语法分析器源文件（317 行）
-├── parser.c / parser.h       # Bison 生成的 C 代码（自动生成，勿编辑）
-├── parser_main.c             # 语法分析器主程序
-├── parser_lex_adapter.c      # 词法-语法适配层
-├── ast.h / ast.c             # AST 结构定义、构造、打印与释放
-├── build.bat                 # Windows 构建脚本
-├── Makefile                  # Make 构建脚本
-├── BUILD.md                  # 本文档
-├── TEST_REPORT.md            # 测试报告
-├── .github/
-│   └── copilot-instructions.md  # AI 编码助手指南
-└── tests/                    # 测试用例目录
-    ├── test_basic.js
-    ├── test_simple.js
-    ├── test_error_missing_semicolon.js
-    ├── test_error_object.js
-    └── test_error_cases.js
+├── ast.c / ast.h              # AST 结构定义、构造、打印与释放
+├── build.bat                  # Windows 构建脚本
+├── docs/                      # 项目文档
+│   ├── BUILD.md               # 本文档
+│   ├── TEST_REPORT.md         # 测试报告
+│   ├── asi_implementation.md  # ASI 实现细节
+│   ├── parser.md / lex.md     # 词法与语法说明
+│   └── todo.md                # 任务清单
+├── lexer.re                   # re2c 词法分析器源文件（首次执行后生成 lexer.c）
+├── main.c                     # 词法分析器入口
+├── Makefile                   # MSYS2/Linux 构建脚本
+├── parser.y                   # Bison 语法分析器源文件（生成 parser.c / parser.h）
+├── parser_lex_adapter.c       # 词法-语法适配层（含 ASI 逻辑）
+├── parser_main.c              # 语法分析器入口（支持 --dump-ast）
+├── tests/
+│   ├── test_basic.js          # 综合语法
+│   ├── test_simple.js         # 小型示例
+│   ├── test_asi_basic.js      # ASI 基础
+│   ├── test_asi_control.js    # ASI 与控制语句
+│   ├── test_asi_return.js     # ASI 受限产生式
+│   ├── test_error_cases.js    # 汇总错误场景
+│   ├── test_error_missing_semicolon.js
+│   ├── test_error_object.js
+│   ├── test_operators.js      # 运算符覆盖
+│   ├── test_switch.js
+│   ├── test_try.js
+│   └── test_while.js
+└── token.h                    # Token 类型定义及词法状态
 ```
 
 ## 常见问题
