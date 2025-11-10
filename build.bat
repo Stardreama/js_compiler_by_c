@@ -146,7 +146,7 @@ exit /b 0
 :testparse
 call :parser
 if errorlevel 1 goto end
-set TEST_FILES=tests\test_basic.js tests\test_simple.js tests\test_asi_basic.js tests\test_asi_return.js tests\test_asi_control.js
+set TEST_FILES=tests\test_basic.js tests\test_simple.js tests\test_asi_basic.js tests\test_asi_return.js tests\test_asi_control.js tests\test_while.js tests\test_switch.js tests\test_try.js
 for %%F in (%TEST_FILES%) do (
     if not exist %%F (
         echo ERROR: Test file %%F not found!

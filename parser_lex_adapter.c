@@ -18,6 +18,14 @@ static int g_paren_depth = 0;
 static int g_control_stack[CONTROL_STACK_MAX];
 static int g_control_top = 0;
 
+typedef enum {
+    BRACE_BLOCK,
+    BRACE_OBJECT
+} BraceKind;
+
+static BraceKind g_brace_stack[CONTROL_STACK_MAX];
+static int g_brace_top = 0;
+
 static bool is_control_keyword(int token) {
     return token == IF || token == FOR || token == WHILE || token == WITH || token == SWITCH;
 }
@@ -47,6 +55,48 @@ static void update_token_state(int token) {
         if (g_paren_depth > 0) {
             pop_control_paren_if_needed();
             g_paren_depth--;
+        }
+    } else if (token == '{') {
+        bool is_block = true;
+        if (g_last_token > 0) {
+            switch (g_last_token) {
+                case IF:
+                case ELSE:
+                case FOR:
+                case WHILE:
+                case DO:
+                case SWITCH:
+                case TRY:
+                case CATCH:
+                case FINALLY:
+                case WITH:
+                case FUNCTION:
+                case CASE:
+                case DEFAULT:
+                case ')':
+                case ';':
+                case '{':
+                case '}':
+                    is_block = true;
+                    break;
+                case ':':
+                    if (g_brace_top > 0 && g_brace_stack[g_brace_top - 1] == BRACE_OBJECT) {
+                        is_block = false;
+                    } else {
+                        is_block = true;
+                    }
+                    break;
+                default:
+                    is_block = false;
+                    break;
+            }
+        }
+        if (g_brace_top < CONTROL_STACK_MAX) {
+            g_brace_stack[g_brace_top++] = is_block ? BRACE_BLOCK : BRACE_OBJECT;
+        }
+    } else if (token == '}') {
+        if (g_brace_top > 0) {
+            g_brace_top--;
         }
     }
 
@@ -110,6 +160,13 @@ static bool should_insert_semicolon(int last_token, bool last_closed_control, in
     }
 
     if (next_token == '}') {
+        bool is_block_closing = true;
+        if (g_brace_top > 0) {
+            is_block_closing = (g_brace_stack[g_brace_top - 1] == BRACE_BLOCK);
+        }
+        if (!is_block_closing) {
+            return false;
+        }
         return true;
     }
 
@@ -235,6 +292,7 @@ void parser_set_input(const char *input) {
     g_paren_depth = 0;
     g_control_top = 0;
     g_pending.valid = false;
+    g_brace_top = 0;
 }
 
 // bison 调用的词法函数

@@ -13,6 +13,15 @@ typedef enum
     AST_RETURN_STMT,
     AST_IF_STMT,
     AST_FOR_STMT,
+    AST_WHILE_STMT,
+    AST_DO_WHILE_STMT,
+    AST_SWITCH_STMT,
+    AST_TRY_STMT,
+    AST_WITH_STMT,
+    AST_LABELED_STMT,
+    AST_BREAK_STMT,
+    AST_CONTINUE_STMT,
+    AST_THROW_STMT,
     AST_EXPR_STMT,
     AST_EMPTY_STMT,
     AST_IDENTIFIER,
@@ -25,7 +34,9 @@ typedef enum
     AST_MEMBER_EXPR,
     AST_ARRAY_LITERAL,
     AST_OBJECT_LITERAL,
-    AST_PROPERTY
+    AST_PROPERTY,
+    AST_SWITCH_CASE,
+    AST_CATCH_CLAUSE
 } ASTNodeType;
 
 typedef enum
@@ -102,6 +113,49 @@ struct ASTNode
         } for_stmt;
         struct
         {
+            ASTNode *test;
+            ASTNode *body;
+        } while_stmt;
+        struct
+        {
+            ASTNode *body;
+            ASTNode *test;
+        } do_while_stmt;
+        struct
+        {
+            ASTNode *discriminant;
+            ASTList *cases;
+        } switch_stmt;
+        struct
+        {
+            ASTNode *block;
+            ASTNode *handler;
+            ASTNode *finalizer;
+        } try_stmt;
+        struct
+        {
+            ASTNode *object;
+            ASTNode *body;
+        } with_stmt;
+        struct
+        {
+            char *label;
+            ASTNode *body;
+        } labeled_stmt;
+        struct
+        {
+            char *label;
+        } break_stmt;
+        struct
+        {
+            char *label;
+        } continue_stmt;
+        struct
+        {
+            ASTNode *argument;
+        } throw_stmt;
+        struct
+        {
             ASTNode *expression;
         } expr_stmt;
         struct
@@ -165,6 +219,17 @@ struct ASTNode
             ASTPropertyKey key;
             ASTNode *value;
         } property;
+        struct
+        {
+            ASTNode *test;
+            ASTList *consequent;
+            bool is_default;
+        } switch_case;
+        struct
+        {
+            char *param;
+            ASTNode *body;
+        } catch_clause;
     } data;
 };
 
@@ -181,6 +246,18 @@ ASTNode *ast_make_function_decl(char *name, ASTList *params, ASTNode *body);
 ASTNode *ast_make_return(ASTNode *argument);
 ASTNode *ast_make_if(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
 ASTNode *ast_make_for(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body);
+ASTNode *ast_make_while(ASTNode *test, ASTNode *body);
+ASTNode *ast_make_do_while(ASTNode *body, ASTNode *test);
+ASTNode *ast_make_switch(ASTNode *discriminant, ASTList *cases);
+ASTNode *ast_make_switch_case(ASTNode *test, ASTList *consequent);
+ASTNode *ast_make_switch_default(ASTList *consequent);
+ASTNode *ast_make_try(ASTNode *block, ASTNode *handler, ASTNode *finalizer);
+ASTNode *ast_make_catch(char *param, ASTNode *body);
+ASTNode *ast_make_with(ASTNode *object, ASTNode *body);
+ASTNode *ast_make_labeled(char *label, ASTNode *body);
+ASTNode *ast_make_break(char *label);
+ASTNode *ast_make_continue(char *label);
+ASTNode *ast_make_throw(ASTNode *argument);
 ASTNode *ast_make_expression_stmt(ASTNode *expression);
 ASTNode *ast_make_empty_statement(void);
 ASTNode *ast_make_identifier(char *name);

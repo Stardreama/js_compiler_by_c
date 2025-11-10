@@ -181,6 +181,11 @@ Syntax error: syntax error, unexpected STRING, expecting ':'
 - 块语句 `{ ... }`
 - if-else 条件语句
 - for 循环（经典三段式）
+- while / do-while 循环
+- switch-case 语句（含 default、fallthrough、break/continue）
+- try-catch-finally 异常处理与 throw 语句
+- with 语句
+- 标签语句与带标签的 break/continue
 - 函数声明
 - return 语句
 - 空语句 `;`
@@ -234,7 +239,7 @@ lexer.re:82:20: warning: sentinel symbol 0 occurs in the middle of the rule
 ### 2. Bison 冲突警告
 
 ```text
-parser.y: 警告: 2 项偏移/归约冲突 [-Wconflicts-sr]
+parser.y: 警告: 3 项偏移/归约冲突 [-Wconflicts-sr]
 ```
 
 - **影响：** 无影响，Bison 使用默认规则解决冲突
@@ -256,12 +261,12 @@ lexer.re:89:25: warning: unused variable 'comment_start'
 
 - AST 节点体系与打印、遍历、释放流程已落地，详见 `ast.h` / `ast.c`，并可通过 `js_parser.exe --dump-ast` 体验树形输出。
 
-### 优先级 P3 - 扩展语句覆盖
+### ✅ 优先级 P3 - 扩展语句覆盖
 
-- [ ] while 循环
-- [ ] do-while 循环
-- [ ] switch-case 语句
-- [ ] try-catch-finally 异常处理
+- [x] while 循环
+- [x] do-while 循环
+- [x] switch-case 语句
+- [x] try-catch-finally 异常处理、throw、with、标签语句
 
 ### 优先级 P4 - 完整运算符支持
 
@@ -283,6 +288,9 @@ lexer.re:89:25: warning: unused variable 'comment_start'
 - `tests/test_asi_basic.js` - ASI 基础场景 ✅
 - `tests/test_asi_return.js` - `return` 受限产生式 ✅
 - `tests/test_asi_control.js` - 与控制语句的协同 ✅
+- `tests/test_while.js` - while/do-while + break/continue + 标签 ✅
+- `tests/test_switch.js` - switch-case/default 场景 ✅
+- `tests/test_try.js` - try-catch-finally / throw / with ✅
 - `tests/test_error_missing_semicolon.js` - 缺少分号错误测试 ✅
 - `tests/test_error_object.js` - 对象字面量错误测试 ✅
 - `tests/test_error_cases.js` - 错误用例集合（需逐个激活测试）

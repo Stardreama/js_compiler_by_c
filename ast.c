@@ -122,6 +122,90 @@ ASTNode *ast_make_for(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *bo
     return node;
 }
 
+ASTNode *ast_make_while(ASTNode *test, ASTNode *body) {
+    ASTNode *node = ast_alloc(AST_WHILE_STMT);
+    node->data.while_stmt.test = test;
+    node->data.while_stmt.body = body;
+    return node;
+}
+
+ASTNode *ast_make_do_while(ASTNode *body, ASTNode *test) {
+    ASTNode *node = ast_alloc(AST_DO_WHILE_STMT);
+    node->data.do_while_stmt.body = body;
+    node->data.do_while_stmt.test = test;
+    return node;
+}
+
+ASTNode *ast_make_switch(ASTNode *discriminant, ASTList *cases) {
+    ASTNode *node = ast_alloc(AST_SWITCH_STMT);
+    node->data.switch_stmt.discriminant = discriminant;
+    node->data.switch_stmt.cases = cases;
+    return node;
+}
+
+ASTNode *ast_make_switch_case(ASTNode *test, ASTList *consequent) {
+    ASTNode *node = ast_alloc(AST_SWITCH_CASE);
+    node->data.switch_case.test = test;
+    node->data.switch_case.consequent = consequent;
+    node->data.switch_case.is_default = false;
+    return node;
+}
+
+ASTNode *ast_make_switch_default(ASTList *consequent) {
+    ASTNode *node = ast_alloc(AST_SWITCH_CASE);
+    node->data.switch_case.test = NULL;
+    node->data.switch_case.consequent = consequent;
+    node->data.switch_case.is_default = true;
+    return node;
+}
+
+ASTNode *ast_make_try(ASTNode *block, ASTNode *handler, ASTNode *finalizer) {
+    ASTNode *node = ast_alloc(AST_TRY_STMT);
+    node->data.try_stmt.block = block;
+    node->data.try_stmt.handler = handler;
+    node->data.try_stmt.finalizer = finalizer;
+    return node;
+}
+
+ASTNode *ast_make_catch(char *param, ASTNode *body) {
+    ASTNode *node = ast_alloc(AST_CATCH_CLAUSE);
+    node->data.catch_clause.param = param;
+    node->data.catch_clause.body = body;
+    return node;
+}
+
+ASTNode *ast_make_with(ASTNode *object, ASTNode *body) {
+    ASTNode *node = ast_alloc(AST_WITH_STMT);
+    node->data.with_stmt.object = object;
+    node->data.with_stmt.body = body;
+    return node;
+}
+
+ASTNode *ast_make_labeled(char *label, ASTNode *body) {
+    ASTNode *node = ast_alloc(AST_LABELED_STMT);
+    node->data.labeled_stmt.label = label;
+    node->data.labeled_stmt.body = body;
+    return node;
+}
+
+ASTNode *ast_make_break(char *label) {
+    ASTNode *node = ast_alloc(AST_BREAK_STMT);
+    node->data.break_stmt.label = label;
+    return node;
+}
+
+ASTNode *ast_make_continue(char *label) {
+    ASTNode *node = ast_alloc(AST_CONTINUE_STMT);
+    node->data.continue_stmt.label = label;
+    return node;
+}
+
+ASTNode *ast_make_throw(ASTNode *argument) {
+    ASTNode *node = ast_alloc(AST_THROW_STMT);
+    node->data.throw_stmt.argument = argument;
+    return node;
+}
+
 ASTNode *ast_make_expression_stmt(ASTNode *expression) {
     ASTNode *node = ast_alloc(AST_EXPR_STMT);
     node->data.expr_stmt.expression = expression;
@@ -283,6 +367,36 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             ast_traverse(node->data.for_stmt.update, visitor, userdata);
             ast_traverse(node->data.for_stmt.body, visitor, userdata);
             break;
+        case AST_WHILE_STMT:
+            ast_traverse(node->data.while_stmt.test, visitor, userdata);
+            ast_traverse(node->data.while_stmt.body, visitor, userdata);
+            break;
+        case AST_DO_WHILE_STMT:
+            ast_traverse(node->data.do_while_stmt.body, visitor, userdata);
+            ast_traverse(node->data.do_while_stmt.test, visitor, userdata);
+            break;
+        case AST_SWITCH_STMT:
+            ast_traverse(node->data.switch_stmt.discriminant, visitor, userdata);
+            ast_traverse_list(node->data.switch_stmt.cases, visitor, userdata);
+            break;
+        case AST_TRY_STMT:
+            ast_traverse(node->data.try_stmt.block, visitor, userdata);
+            ast_traverse(node->data.try_stmt.handler, visitor, userdata);
+            ast_traverse(node->data.try_stmt.finalizer, visitor, userdata);
+            break;
+        case AST_WITH_STMT:
+            ast_traverse(node->data.with_stmt.object, visitor, userdata);
+            ast_traverse(node->data.with_stmt.body, visitor, userdata);
+            break;
+        case AST_LABELED_STMT:
+            ast_traverse(node->data.labeled_stmt.body, visitor, userdata);
+            break;
+        case AST_BREAK_STMT:
+        case AST_CONTINUE_STMT:
+            break;
+        case AST_THROW_STMT:
+            ast_traverse(node->data.throw_stmt.argument, visitor, userdata);
+            break;
         case AST_EXPR_STMT:
             ast_traverse(node->data.expr_stmt.expression, visitor, userdata);
             break;
@@ -315,6 +429,13 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             break;
         case AST_PROPERTY:
             ast_traverse(node->data.property.value, visitor, userdata);
+            break;
+        case AST_SWITCH_CASE:
+            ast_traverse(node->data.switch_case.test, visitor, userdata);
+            ast_traverse_list(node->data.switch_case.consequent, visitor, userdata);
+            break;
+        case AST_CATCH_CLAUSE:
+            ast_traverse(node->data.catch_clause.body, visitor, userdata);
             break;
         case AST_EMPTY_STMT:
         case AST_IDENTIFIER:
@@ -416,6 +537,83 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             print_indent(indent + 2);
             printf("Body\n");
             ast_print_internal(node->data.for_stmt.body, indent + 4);
+            break;
+        case AST_WHILE_STMT:
+            print_indent(indent);
+            printf("WhileStatement\n");
+            print_indent(indent + 2);
+            printf("Test\n");
+            ast_print_internal(node->data.while_stmt.test, indent + 4);
+            print_indent(indent + 2);
+            printf("Body\n");
+            ast_print_internal(node->data.while_stmt.body, indent + 4);
+            break;
+        case AST_DO_WHILE_STMT:
+            print_indent(indent);
+            printf("DoWhileStatement\n");
+            print_indent(indent + 2);
+            printf("Body\n");
+            ast_print_internal(node->data.do_while_stmt.body, indent + 4);
+            print_indent(indent + 2);
+            printf("Test\n");
+            ast_print_internal(node->data.do_while_stmt.test, indent + 4);
+            break;
+        case AST_SWITCH_STMT:
+            print_indent(indent);
+            printf("SwitchStatement\n");
+            print_indent(indent + 2);
+            printf("Discriminant\n");
+            ast_print_internal(node->data.switch_stmt.discriminant, indent + 4);
+            if (node->data.switch_stmt.cases) {
+                print_indent(indent + 2);
+                printf("Cases\n");
+                ast_print_list(node->data.switch_stmt.cases, indent + 4);
+            }
+            break;
+        case AST_TRY_STMT:
+            print_indent(indent);
+            printf("TryStatement\n");
+            print_indent(indent + 2);
+            printf("Block\n");
+            ast_print_internal(node->data.try_stmt.block, indent + 4);
+            if (node->data.try_stmt.handler) {
+                print_indent(indent + 2);
+                printf("Handler\n");
+                ast_print_internal(node->data.try_stmt.handler, indent + 4);
+            }
+            if (node->data.try_stmt.finalizer) {
+                print_indent(indent + 2);
+                printf("Finalizer\n");
+                ast_print_internal(node->data.try_stmt.finalizer, indent + 4);
+            }
+            break;
+        case AST_WITH_STMT:
+            print_indent(indent);
+            printf("WithStatement\n");
+            print_indent(indent + 2);
+            printf("Object\n");
+            ast_print_internal(node->data.with_stmt.object, indent + 4);
+            print_indent(indent + 2);
+            printf("Body\n");
+            ast_print_internal(node->data.with_stmt.body, indent + 4);
+            break;
+        case AST_LABELED_STMT:
+            print_indent(indent);
+            printf("LabeledStatement label=%s\n", node->data.labeled_stmt.label ? node->data.labeled_stmt.label : "");
+            ast_print_internal(node->data.labeled_stmt.body, indent + 2);
+            break;
+        case AST_BREAK_STMT:
+            print_indent(indent);
+            printf("BreakStatement label=%s\n", node->data.break_stmt.label ? node->data.break_stmt.label : "<none>");
+            break;
+        case AST_CONTINUE_STMT:
+            print_indent(indent);
+            printf("ContinueStatement label=%s\n", node->data.continue_stmt.label ? node->data.continue_stmt.label : "<none>");
+            break;
+        case AST_THROW_STMT:
+            print_indent(indent);
+            printf("ThrowStatement\n");
+            ast_print_internal(node->data.throw_stmt.argument, indent + 2);
             break;
         case AST_EXPR_STMT:
             print_indent(indent);
@@ -527,6 +725,25 @@ static void ast_print_internal(const ASTNode *node, int indent) {
                    node->data.property.key.is_identifier ? " (identifier)" : "");
             ast_print_internal(node->data.property.value, indent + 2);
             break;
+        case AST_SWITCH_CASE:
+            print_indent(indent);
+            printf("SwitchCase %s\n", node->data.switch_case.is_default ? "<default>" : "<case>");
+            if (!node->data.switch_case.is_default) {
+                print_indent(indent + 2);
+                printf("Test\n");
+                ast_print_internal(node->data.switch_case.test, indent + 4);
+            }
+            if (node->data.switch_case.consequent) {
+                print_indent(indent + 2);
+                printf("Consequent\n");
+                ast_print_list(node->data.switch_case.consequent, indent + 4);
+            }
+            break;
+        case AST_CATCH_CLAUSE:
+            print_indent(indent);
+            printf("CatchClause param=%s\n", node->data.catch_clause.param ? node->data.catch_clause.param : "<none>");
+            ast_print_internal(node->data.catch_clause.body, indent + 2);
+            break;
     }
 }
 
@@ -567,6 +784,40 @@ void ast_free(ASTNode *node) {
             ast_free(node->data.for_stmt.test);
             ast_free(node->data.for_stmt.update);
             ast_free(node->data.for_stmt.body);
+            break;
+        case AST_WHILE_STMT:
+            ast_free(node->data.while_stmt.test);
+            ast_free(node->data.while_stmt.body);
+            break;
+        case AST_DO_WHILE_STMT:
+            ast_free(node->data.do_while_stmt.body);
+            ast_free(node->data.do_while_stmt.test);
+            break;
+        case AST_SWITCH_STMT:
+            ast_free(node->data.switch_stmt.discriminant);
+            ast_list_free(node->data.switch_stmt.cases);
+            break;
+        case AST_TRY_STMT:
+            ast_free(node->data.try_stmt.block);
+            ast_free(node->data.try_stmt.handler);
+            ast_free(node->data.try_stmt.finalizer);
+            break;
+        case AST_WITH_STMT:
+            ast_free(node->data.with_stmt.object);
+            ast_free(node->data.with_stmt.body);
+            break;
+        case AST_LABELED_STMT:
+            free(node->data.labeled_stmt.label);
+            ast_free(node->data.labeled_stmt.body);
+            break;
+        case AST_BREAK_STMT:
+            free(node->data.break_stmt.label);
+            break;
+        case AST_CONTINUE_STMT:
+            free(node->data.continue_stmt.label);
+            break;
+        case AST_THROW_STMT:
+            ast_free(node->data.throw_stmt.argument);
             break;
         case AST_EXPR_STMT:
             ast_free(node->data.expr_stmt.expression);
@@ -612,6 +863,14 @@ void ast_free(ASTNode *node) {
         case AST_PROPERTY:
             free(node->data.property.key.name);
             ast_free(node->data.property.value);
+            break;
+        case AST_SWITCH_CASE:
+            ast_free(node->data.switch_case.test);
+            ast_list_free(node->data.switch_case.consequent);
+            break;
+        case AST_CATCH_CLAUSE:
+            free(node->data.catch_clause.param);
+            ast_free(node->data.catch_clause.body);
             break;
     }
     free(node);

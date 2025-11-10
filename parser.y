@@ -52,11 +52,11 @@ static ASTNode *g_parser_ast_root = NULL;
 %left '*' '/' '%'
 %right UMINUS '!' '~' PLUS_PLUS MINUS_MINUS
 
-%type <node> program stmt block var_stmt opt_init return_stmt if_stmt for_stmt func_decl for_init opt_expr
+%type <node> program stmt block var_stmt opt_init return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init opt_expr catch_clause finally_clause finally_clause_opt switch_case
 %type <node> expr assignment_expr logical_or_expr logical_and_expr equality_expr relational_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr
 %type <node> expr_no_obj assignment_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
 %type <node> array_literal object_literal prop
-%type <list> stmt_list opt_param_list param_list opt_arg_list arg_list el_list prop_list
+%type <list> stmt_list opt_param_list param_list opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq
 
 %%
 
@@ -88,9 +88,27 @@ stmt
       { $$ = $1; }
   | for_stmt
       { $$ = $1; }
+  | while_stmt
+      { $$ = $1; }
+  | do_stmt
+      { $$ = $1; }
+  | switch_stmt
+      { $$ = $1; }
+  | try_stmt
+      { $$ = $1; }
+  | with_stmt
+      { $$ = $1; }
   | func_decl
       { $$ = $1; }
   | return_stmt ';'
+      { $$ = $1; }
+  | break_stmt ';'
+      { $$ = $1; }
+  | continue_stmt ';'
+      { $$ = $1; }
+  | throw_stmt ';'
+      { $$ = $1; }
+  | labeled_stmt
       { $$ = $1; }
   ;
 
@@ -136,6 +154,18 @@ for_stmt
       { $$ = ast_make_for($3, $5, $7, $9); }
   ;
 
+while_stmt
+    : WHILE '(' expr ')' stmt
+            { $$ = ast_make_while($3, $5); }
+    ;
+
+do_stmt
+    : DO stmt WHILE '(' expr ')' ';'
+            { $$ = ast_make_do_while($2, $5); }
+    | DO stmt WHILE '(' expr ')'
+            { $$ = ast_make_do_while($2, $5); }
+    ;
+
 for_init
   : /* empty */
       { $$ = NULL; }
@@ -151,6 +181,32 @@ opt_expr
   | expr
       { $$ = $1; }
   ;
+
+switch_stmt
+    : SWITCH '(' expr ')' '{' switch_case_list '}'
+            { $$ = ast_make_switch($3, $6); }
+    ;
+
+switch_case_list
+    : /* empty */
+            { $$ = NULL; }
+    | switch_case_list switch_case
+            { $$ = ast_list_append($1, $2); }
+    ;
+
+switch_case
+    : CASE expr ':' case_stmt_seq
+            { $$ = ast_make_switch_case($2, $4); }
+    | DEFAULT ':' case_stmt_seq
+            { $$ = ast_make_switch_default($3); }
+    ;
+
+case_stmt_seq
+    : /* empty */
+            { $$ = NULL; }
+    | case_stmt_seq stmt
+            { $$ = ast_list_append($1, $2); }
+    ;
 
 func_decl
   : FUNCTION IDENTIFIER '(' opt_param_list ')' block
@@ -170,6 +226,59 @@ param_list
   | param_list ',' IDENTIFIER
       { $$ = ast_list_append($1, ast_make_identifier($3)); }
   ;
+
+catch_clause
+    : CATCH '(' IDENTIFIER ')' block
+            { $$ = ast_make_catch($3, $5); }
+    ;
+
+finally_clause
+    : FINALLY block
+            { $$ = $2; }
+    ;
+
+finally_clause_opt
+    : /* empty */
+            { $$ = NULL; }
+    | finally_clause
+            { $$ = $1; }
+    ;
+
+try_stmt
+    : TRY block catch_clause finally_clause_opt
+            { $$ = ast_make_try($2, $3, $4); }
+    | TRY block finally_clause
+            { $$ = ast_make_try($2, NULL, $3); }
+    ;
+
+with_stmt
+    : WITH '(' expr ')' stmt
+            { $$ = ast_make_with($3, $5); }
+    ;
+
+labeled_stmt
+    : IDENTIFIER ':' stmt
+            { $$ = ast_make_labeled($1, $3); }
+    ;
+
+break_stmt
+    : BREAK
+            { $$ = ast_make_break(NULL); }
+    | BREAK IDENTIFIER
+            { $$ = ast_make_break($2); }
+    ;
+
+continue_stmt
+    : CONTINUE
+            { $$ = ast_make_continue(NULL); }
+    | CONTINUE IDENTIFIER
+            { $$ = ast_make_continue($2); }
+    ;
+
+throw_stmt
+    : THROW expr
+            { $$ = ast_make_throw($2); }
+    ;
 
 expr
   : assignment_expr
