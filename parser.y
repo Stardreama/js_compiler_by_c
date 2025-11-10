@@ -43,18 +43,23 @@ static ASTNode *g_parser_ast_root = NULL;
 %token AND_ASSIGN OR_ASSIGN XOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN URSHIFT_ASSIGN
 
 %define parse.error verbose
-%right '='
+%right '=' PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN SLASH_ASSIGN PERCENT_ASSIGN AND_ASSIGN OR_ASSIGN XOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN URSHIFT_ASSIGN
+%right '?' ':'
 %left OR
 %left AND
+%left '|'
+%left '^'
+%left '&'
 %left EQ NE EQ_STRICT NE_STRICT
 %left '<' '>' LE GE
+%left LSHIFT RSHIFT URSHIFT
 %left '+' '-'
 %left '*' '/' '%'
-%right UMINUS '!' '~' PLUS_PLUS MINUS_MINUS
+%right UMINUS '!' '~' TYPEOF DELETE VOID PLUS_PLUS MINUS_MINUS
 
 %type <node> program stmt block var_stmt opt_init return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init opt_expr catch_clause finally_clause finally_clause_opt switch_case
-%type <node> expr assignment_expr logical_or_expr logical_and_expr equality_expr relational_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr
-%type <node> expr_no_obj assignment_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
+%type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr shift_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr
+%type <node> expr_no_obj assignment_expr_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
 %type <node> array_literal object_literal prop
 %type <list> stmt_list opt_param_list param_list opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq
 
@@ -283,14 +288,45 @@ throw_stmt
 expr
   : assignment_expr
       { $$ = $1; }
+    | expr ',' assignment_expr
+            { $$ = ast_make_sequence($1, $3); }
   ;
 
 assignment_expr
   : postfix_expr '=' assignment_expr
       { $$ = ast_make_assignment("=", $1, $3); }
-  | logical_or_expr
+  | postfix_expr PLUS_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("+=", $1, $3); }
+  | postfix_expr MINUS_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("-=", $1, $3); }
+  | postfix_expr STAR_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("*=", $1, $3); }
+  | postfix_expr SLASH_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("/=", $1, $3); }
+  | postfix_expr PERCENT_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("%=", $1, $3); }
+  | postfix_expr AND_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("&=", $1, $3); }
+  | postfix_expr OR_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("|=", $1, $3); }
+  | postfix_expr XOR_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("^=", $1, $3); }
+  | postfix_expr LSHIFT_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("<<=", $1, $3); }
+  | postfix_expr RSHIFT_ASSIGN assignment_expr
+      { $$ = ast_make_assignment(">>=", $1, $3); }
+  | postfix_expr URSHIFT_ASSIGN assignment_expr
+      { $$ = ast_make_assignment(">>>=", $1, $3); }
+  | conditional_expr
       { $$ = $1; }
   ;
+
+conditional_expr
+    : logical_or_expr
+            { $$ = $1; }
+    | logical_or_expr '?' assignment_expr ':' assignment_expr
+            { $$ = ast_make_conditional($1, $3, $5); }
+    ;
 
 logical_or_expr
   : logical_and_expr
@@ -300,14 +336,35 @@ logical_or_expr
   ;
 
 logical_and_expr
-  : equality_expr
+    : bitwise_or_expr
       { $$ = $1; }
-  | logical_and_expr AND equality_expr
+    | logical_and_expr AND bitwise_or_expr
       { $$ = ast_make_binary("&&", $1, $3); }
   ;
 
+bitwise_or_expr
+    : bitwise_xor_expr
+            { $$ = $1; }
+    | bitwise_or_expr '|' bitwise_xor_expr
+            { $$ = ast_make_binary("|", $1, $3); }
+    ;
+
+bitwise_xor_expr
+    : bitwise_and_expr
+            { $$ = $1; }
+    | bitwise_xor_expr '^' bitwise_and_expr
+            { $$ = ast_make_binary("^", $1, $3); }
+    ;
+
+bitwise_and_expr
+    : equality_expr
+            { $$ = $1; }
+    | bitwise_and_expr '&' equality_expr
+            { $$ = ast_make_binary("&", $1, $3); }
+    ;
+
 equality_expr
-  : relational_expr
+    : relational_expr
       { $$ = $1; }
   | equality_expr EQ relational_expr
       { $$ = ast_make_binary("==", $1, $3); }
@@ -320,16 +377,27 @@ equality_expr
   ;
 
 relational_expr
+  : shift_expr
+      { $$ = $1; }
+  | relational_expr '<' shift_expr
+      { $$ = ast_make_binary("<", $1, $3); }
+  | relational_expr '>' shift_expr
+      { $$ = ast_make_binary(">", $1, $3); }
+  | relational_expr LE shift_expr
+      { $$ = ast_make_binary("<=", $1, $3); }
+  | relational_expr GE shift_expr
+      { $$ = ast_make_binary(">=", $1, $3); }
+  ;
+
+shift_expr
   : additive_expr
       { $$ = $1; }
-  | relational_expr '<' additive_expr
-      { $$ = ast_make_binary("<", $1, $3); }
-  | relational_expr '>' additive_expr
-      { $$ = ast_make_binary(">", $1, $3); }
-  | relational_expr LE additive_expr
-      { $$ = ast_make_binary("<=", $1, $3); }
-  | relational_expr GE additive_expr
-      { $$ = ast_make_binary(">=", $1, $3); }
+  | shift_expr LSHIFT additive_expr
+      { $$ = ast_make_binary("<<", $1, $3); }
+  | shift_expr RSHIFT additive_expr
+      { $$ = ast_make_binary(">>", $1, $3); }
+  | shift_expr URSHIFT additive_expr
+      { $$ = ast_make_binary(">>>", $1, $3); }
   ;
 
 additive_expr
@@ -363,6 +431,12 @@ unary_expr
       { $$ = ast_make_unary("!", $2); }
   | '~' unary_expr
       { $$ = ast_make_unary("~", $2); }
+  | TYPEOF unary_expr
+      { $$ = ast_make_unary("typeof", $2); }
+  | DELETE unary_expr
+      { $$ = ast_make_unary("delete", $2); }
+  | VOID unary_expr
+      { $$ = ast_make_unary("void", $2); }
   | PLUS_PLUS unary_expr
       { $$ = ast_make_update("++", $2, true); }
   | MINUS_MINUS unary_expr
@@ -390,9 +464,9 @@ opt_arg_list
   ;
 
 arg_list
-  : expr
+  : assignment_expr
       { $$ = ast_list_append(NULL, $1); }
-  | arg_list ',' expr
+  | arg_list ',' assignment_expr
       { $$ = ast_list_append($1, $3); }
   ;
 
@@ -420,15 +494,46 @@ primary_expr
   ;
 
 expr_no_obj
-  : assignment_expr_no_obj
-      { $$ = $1; }
-  ;
+    : assignment_expr_no_obj
+            { $$ = $1; }
+    | expr_no_obj ',' assignment_expr
+            { $$ = ast_make_sequence($1, $3); }
+    ;
 
 assignment_expr_no_obj
   : postfix_expr_no_obj '=' assignment_expr
       { $$ = ast_make_assignment("=", $1, $3); }
-  | logical_or_expr_no_obj
+  | postfix_expr_no_obj PLUS_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("+=", $1, $3); }
+  | postfix_expr_no_obj MINUS_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("-=", $1, $3); }
+  | postfix_expr_no_obj STAR_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("*=", $1, $3); }
+  | postfix_expr_no_obj SLASH_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("/=", $1, $3); }
+  | postfix_expr_no_obj PERCENT_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("%=", $1, $3); }
+  | postfix_expr_no_obj AND_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("&=", $1, $3); }
+  | postfix_expr_no_obj OR_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("|=", $1, $3); }
+  | postfix_expr_no_obj XOR_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("^=", $1, $3); }
+  | postfix_expr_no_obj LSHIFT_ASSIGN assignment_expr
+      { $$ = ast_make_assignment("<<=", $1, $3); }
+  | postfix_expr_no_obj RSHIFT_ASSIGN assignment_expr
+      { $$ = ast_make_assignment(">>=", $1, $3); }
+  | postfix_expr_no_obj URSHIFT_ASSIGN assignment_expr
+      { $$ = ast_make_assignment(">>>=", $1, $3); }
+  | conditional_expr_no_obj
       { $$ = $1; }
+  ;
+
+conditional_expr_no_obj
+  : logical_or_expr_no_obj
+      { $$ = $1; }
+  | logical_or_expr_no_obj '?' assignment_expr ':' assignment_expr
+      { $$ = ast_make_conditional($1, $3, $5); }
   ;
 
 logical_or_expr_no_obj
@@ -439,10 +544,31 @@ logical_or_expr_no_obj
   ;
 
 logical_and_expr_no_obj
+  : bitwise_or_expr_no_obj
+      { $$ = $1; }
+  | logical_and_expr_no_obj AND bitwise_or_expr_no_obj
+      { $$ = ast_make_binary("&&", $1, $3); }
+  ;
+
+bitwise_or_expr_no_obj
+  : bitwise_xor_expr_no_obj
+      { $$ = $1; }
+  | bitwise_or_expr_no_obj '|' bitwise_xor_expr_no_obj
+      { $$ = ast_make_binary("|", $1, $3); }
+  ;
+
+bitwise_xor_expr_no_obj
+  : bitwise_and_expr_no_obj
+      { $$ = $1; }
+  | bitwise_xor_expr_no_obj '^' bitwise_and_expr_no_obj
+      { $$ = ast_make_binary("^", $1, $3); }
+  ;
+
+bitwise_and_expr_no_obj
   : equality_expr_no_obj
       { $$ = $1; }
-  | logical_and_expr_no_obj AND equality_expr_no_obj
-      { $$ = ast_make_binary("&&", $1, $3); }
+  | bitwise_and_expr_no_obj '&' equality_expr_no_obj
+      { $$ = ast_make_binary("&", $1, $3); }
   ;
 
 equality_expr_no_obj
@@ -459,16 +585,27 @@ equality_expr_no_obj
   ;
 
 relational_expr_no_obj
+  : shift_expr_no_obj
+      { $$ = $1; }
+  | relational_expr_no_obj '<' shift_expr_no_obj
+      { $$ = ast_make_binary("<", $1, $3); }
+  | relational_expr_no_obj '>' shift_expr_no_obj
+      { $$ = ast_make_binary(">", $1, $3); }
+  | relational_expr_no_obj LE shift_expr_no_obj
+      { $$ = ast_make_binary("<=", $1, $3); }
+  | relational_expr_no_obj GE shift_expr_no_obj
+      { $$ = ast_make_binary(">=", $1, $3); }
+  ;
+
+shift_expr_no_obj
   : additive_expr_no_obj
       { $$ = $1; }
-  | relational_expr_no_obj '<' additive_expr_no_obj
-      { $$ = ast_make_binary("<", $1, $3); }
-  | relational_expr_no_obj '>' additive_expr_no_obj
-      { $$ = ast_make_binary(">", $1, $3); }
-  | relational_expr_no_obj LE additive_expr_no_obj
-      { $$ = ast_make_binary("<=", $1, $3); }
-  | relational_expr_no_obj GE additive_expr_no_obj
-      { $$ = ast_make_binary(">=", $1, $3); }
+  | shift_expr_no_obj LSHIFT additive_expr_no_obj
+      { $$ = ast_make_binary("<<", $1, $3); }
+  | shift_expr_no_obj RSHIFT additive_expr_no_obj
+      { $$ = ast_make_binary(">>", $1, $3); }
+  | shift_expr_no_obj URSHIFT additive_expr_no_obj
+      { $$ = ast_make_binary(">>>", $1, $3); }
   ;
 
 additive_expr_no_obj
@@ -502,6 +639,12 @@ unary_expr_no_obj
       { $$ = ast_make_unary("!", $2); }
   | '~' unary_expr_no_obj
       { $$ = ast_make_unary("~", $2); }
+  | TYPEOF unary_expr_no_obj
+      { $$ = ast_make_unary("typeof", $2); }
+  | DELETE unary_expr_no_obj
+      { $$ = ast_make_unary("delete", $2); }
+  | VOID unary_expr_no_obj
+      { $$ = ast_make_unary("void", $2); }
   | PLUS_PLUS unary_expr_no_obj
       { $$ = ast_make_update("++", $2, true); }
   | MINUS_MINUS unary_expr_no_obj
@@ -550,9 +693,9 @@ array_literal
   ;
 
 el_list
-  : expr
+  : assignment_expr
       { $$ = ast_list_append(NULL, $1); }
-  | el_list ',' expr
+  | el_list ',' assignment_expr
       { $$ = ast_list_append($1, $3); }
   ;
 
@@ -576,9 +719,9 @@ prop_list
   ;
 
 prop
-  : IDENTIFIER ':' expr
+  : IDENTIFIER ':' assignment_expr
       { $$ = ast_make_property($1, true, $3); }
-  | STRING ':' expr
+  | STRING ':' assignment_expr
       { $$ = ast_make_property($1, false, $3); }
   ;
 

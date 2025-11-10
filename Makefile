@@ -95,7 +95,8 @@ TEST_PARSE_FILES = \
 	tests/test_asi_control.js \
 	tests/test_while.js \
 	tests/test_switch.js \
-	tests/test_try.js
+	tests/test_try.js \
+	tests/test_operators.js
 
 test-parse: $(PARSER_TARGET)
 	@for f in $(TEST_PARSE_FILES); do \

@@ -28,6 +28,8 @@ typedef enum
     AST_LITERAL,
     AST_ASSIGN_EXPR,
     AST_BINARY_EXPR,
+    AST_CONDITIONAL_EXPR,
+    AST_SEQUENCE_EXPR,
     AST_UNARY_EXPR,
     AST_UPDATE_EXPR,
     AST_CALL_EXPR,
@@ -180,6 +182,16 @@ struct ASTNode
         } binary;
         struct
         {
+            ASTNode *test;
+            ASTNode *consequent;
+            ASTNode *alternate;
+        } conditional;
+        struct
+        {
+            ASTList *elements;
+        } sequence;
+        struct
+        {
             const char *op;
             ASTNode *left;
             ASTNode *right;
@@ -268,6 +280,8 @@ ASTNode *ast_make_null_literal(void);
 ASTNode *ast_make_undefined_literal(void);
 ASTNode *ast_make_assignment(const char *op, ASTNode *left, ASTNode *right);
 ASTNode *ast_make_binary(const char *op, ASTNode *left, ASTNode *right);
+ASTNode *ast_make_conditional(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
+ASTNode *ast_make_sequence(ASTNode *left, ASTNode *right);
 ASTNode *ast_make_unary(const char *op, ASTNode *argument);
 ASTNode *ast_make_update(const char *op, ASTNode *argument, bool prefix);
 ASTNode *ast_make_call(ASTNode *callee, ASTList *arguments);
