@@ -1,19 +1,25 @@
-# JavaScript 编译器 - 构建指南
+# JavaScript 编译器 - 构建与调试指南
 
-本项目包含两个可执行程序：
+本文档介绍如何在当前项目中构建词法分析器与语法分析器，并重点记录抽象语法树（AST）的生成与调试流程。所有示例命令默认在仓库根目录执行，如未特殊说明均适用于 MinGW 环境。
 
-- **js_lexer.exe** - 词法分析器（Token 流输出，用于调试）
-- **js_parser.exe** - 语法分析器与 AST 构建器（语法验证，可选输出抽象语法树）
+## 构建产物概览
 
-## 构建项目
+- `js_lexer.exe`：输出 Token 流的词法分析工具，便于定位词法规则问题。
+- `js_parser.exe`：完成语法分析并生成 AST，支持 `--dump-ast` 选项输出树形结构。
 
-### Windows (使用 build.bat)
+## 环境要求
+
+- GCC（MinGW64，脚本默认路径为 `D:\mingw64\bin\gcc.exe`）。
+- re2c ≥ 3.0 与 Bison ≥ 3.0（通过脚本自动调用）。
+- 可选：MSYS2 或类 Unix 环境以使用 `make`。
+
+## Windows 构建流程（build.bat）
 
 ```bash
 # 构建词法分析器 (js_lexer.exe)
 .\build.bat
 
-# 构建语法分析器 (js_parser.exe)
+# 构建语法分析器（同时触发 AST 相关代码编译）
 .\build.bat parser
 
 # 构建词法分析器并运行测试
@@ -29,22 +35,21 @@
 .\build.bat help
 ```
 
-### 使用 Makefile (MSYS2 或 Linux)
+脚本内部会按顺序运行 re2c、Bison 与 GCC。修改 `lexer.re` 或 `parser.y` 后无需手动调用 re2c/Bison，直接执行 `build.bat parser` 即可重新生成 `lexer.c`、`parser.c`、`parser.h` 以及链接 AST 支持代码。
+
+## MSYS2 / Linux 构建流程（Makefile）
 
 ```bash
 # 构建词法分析器 (js_lexer.exe)
 make
 
-# 构建语法分析器 (js_parser.exe)
+# 构建 js_parser.exe（含 AST）
 make parser
 
-# 运行词法分析器测试
-make test-lex
-
-# 运行语法分析器测试
+# 运行语法与 AST 正向测试
 make test-parse
 
-# 清理所有生成文件
+# 清理输出
 make clean
 
 # 显示帮助信息
