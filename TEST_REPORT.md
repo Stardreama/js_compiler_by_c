@@ -26,7 +26,7 @@
 
 **测试结果:**
 
-```
+```text
 测试文件: tests\test_basic.js
 结果: ✅ 成功
 - 正确识别所有 token 类型
@@ -36,7 +36,7 @@
 
 **示例输出:**
 
-```
+```text
 [  1] Line   2, Col   1: VAR             = 'var'
 [  2] Line   2, Col   5: IDENTIFIER      = 'x'
 [  3] Line   2, Col   7: =
@@ -63,7 +63,7 @@
 
 #### 测试 1: 基本语法测试 ✅
 
-```
+```text
 测试文件: tests\test_basic.js
 包含内容:
   - 变量声明 (var, let, const)
@@ -77,7 +77,7 @@
 
 #### 测试 2: 简单函数测试 ✅
 
-```
+```text
 测试文件: tests\test_simple.js
 包含内容:
   - 变量运算
@@ -89,7 +89,7 @@
 
 #### 测试 3: 错误检测 - 缺少分号 ✅
 
-```
+```text
 测试文件: tests\test_error_missing_semicolon.js
 错误代码: var x = 10  // 缺少分号
          var y = 20;
@@ -100,7 +100,7 @@
 
 #### 测试 4: 错误检测 - 对象字面量缺少冒号 ✅
 
-```
+```text
 测试文件: tests\test_error_object.js
 错误代码: {
            name "test",  // 缺少冒号
@@ -111,11 +111,45 @@
 错误信息: syntax error, unexpected STRING, expecting ':'
 ```
 
+#### 测试 5: ASI - 基础语句 ✅
+
+```text
+测试文件: tests\test_asi_basic.js
+包含内容:
+  - 省略分号的变量声明与表达式语句
+  - `a\n++b` 触发受限 ASI
+  - 链式调用 `console.log`（确保属性访问跨行解析正常）
+
+结果: ✅ Parsing successful!
+```
+
+#### 测试 6: ASI - return 语句 ✅
+
+```text
+测试文件: tests\test_asi_return.js
+包含内容:
+  - `return` 后换行的受限产生式
+  - 函数调用链上的 ASI 行为
+
+结果: ✅ Parsing successful!
+```
+
+#### 测试 7: ASI - 控制流协同 ✅
+
+```text
+测试文件: tests\test_asi_control.js
+包含内容:
+  - `if (true)` 紧随单行语句（验证不误插分号）
+  - `if/else` 链式结构与 ASI 共存
+
+结果: ✅ Parsing successful!
+```
+
 ## 编译警告分析
 
 ### 警告 1: re2c sentinel 警告
 
-```
+```text
 lexer.re:82:20: warning: sentinel symbol 0 occurs in the middle of the rule
 ```
 
@@ -124,7 +158,7 @@ lexer.re:82:20: warning: sentinel symbol 0 occurs in the middle of the rule
 
 ### 警告 2: Bison 冲突警告
 
-```
+```text
 parser.y: 警告: 2 项偏移/归约冲突 [-Wconflicts-sr]
 ```
 
@@ -134,7 +168,7 @@ parser.y: 警告: 2 项偏移/归约冲突 [-Wconflicts-sr]
 
 ### 警告 3: 未使用变量
 
-```
+```text
 lexer.re:89:25: warning: unused variable 'comment_start'
 ```
 
@@ -175,12 +209,6 @@ lexer.re:89:25: warning: unused variable 'comment_start'
 
 ## 尚未实现的功能
 
-### ⏳ 待实现（优先级 P1）
-
-- [ ] **ASI 机制**（自动分号插入）
-  - 当前必须显式书写分号
-  - 已为 ASI 预留 `has_newline` 标记
-
 ### ⏳ 待实现（优先级 P2-P5）
 
 - [ ] AST 节点构建（当前仅语法检查）
@@ -218,8 +246,9 @@ lexer.re:89:25: warning: unused variable 'comment_start'
 | -------- | -------- | -------- | -------- |
 | 词法分析 | 1        | 1        | 100%     |
 | 基本语法 | 2        | 2        | 100%     |
+| ASI 行为 | 3        | 3        | 100%     |
 | 错误检测 | 2        | 2        | 100%     |
-| **总计** | **5**    | **5**    | **100%** |
+| **总计** | **8**    | **8**    | **100%** |
 
 ## 结论
 

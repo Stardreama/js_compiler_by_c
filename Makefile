@@ -87,11 +87,25 @@ test-lex: $(LEXER_TARGET) test-setup
 	@./$(LEXER_TARGET) tests/test_basic.js
 	@echo.
 
+TEST_PARSE_FILES = \
+	tests/test_basic.js \
+	tests/test_simple.js \
+	tests/test_asi_basic.js \
+	tests/test_asi_return.js \
+	tests/test_asi_control.js
+
 test-parse: $(PARSER_TARGET)
-	@echo.
-	@echo === Running Parser Test: tests/test_basic.js ===
-	@./$(PARSER_TARGET) tests/test_basic.js
-	@echo.
+	@for f in $(TEST_PARSE_FILES); do \
+		if [ ! -f $$f ]; then \
+			echo "Missing test file: $$f"; \
+			exit 1; \
+		fi; \
+	done
+	@for f in $(TEST_PARSE_FILES); do \
+		echo "=== Running Parser Test: $$f ==="; \
+		./$(PARSER_TARGET) $$f || exit $$?; \
+		echo; \
+	done
 
 # 帮助信息
 help:

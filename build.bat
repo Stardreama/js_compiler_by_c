@@ -144,11 +144,18 @@ exit /b 0
 :testparse
 call :parser
 if errorlevel 1 goto end
-if not exist tests\test_basic.js (
-    echo ERROR: Test file tests\test_basic.js not found!
-    exit /b 1
+set TEST_FILES=tests\test_basic.js tests\test_simple.js tests\test_asi_basic.js tests\test_asi_return.js tests\test_asi_control.js
+for %%F in (%TEST_FILES%) do (
+    if not exist %%F (
+        echo ERROR: Test file %%F not found!
+        exit /b 1
+    )
 )
-js_parser.exe tests\test_basic.js
+for %%F in (%TEST_FILES%) do (
+    echo Running parser test: %%F
+    js_parser.exe %%F
+    if errorlevel 1 goto end
+)
 goto end
 
 :end

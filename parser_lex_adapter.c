@@ -3,16 +3,236 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include "token.h"
 #include "parser.h"  // 由 bison -d 生成，包含 VAR/LET/... 等 token 定义
 
 static Lexer g_lexer;
 static int g_initialized = 0;
+static int g_last_token = 0;
+static bool g_last_token_closed_control = false;
+
+// 跟踪括号层级及控制语句的条件括号，用于避免在 if(...) 等后面误插入分号
+#define CONTROL_STACK_MAX 64
+static int g_paren_depth = 0;
+static int g_control_stack[CONTROL_STACK_MAX];
+static int g_control_top = 0;
+
+static bool is_control_keyword(int token) {
+    return token == IF || token == FOR || token == WHILE || token == WITH || token == SWITCH;
+}
+
+static void push_control_paren(void) {
+    if (g_control_top < CONTROL_STACK_MAX) {
+        g_control_stack[g_control_top++] = g_paren_depth;
+    }
+}
+
+static void pop_control_paren_if_needed(void) {
+    if (g_control_top > 0 && g_control_stack[g_control_top - 1] == g_paren_depth) {
+        g_control_top--;
+        g_last_token_closed_control = true;
+    }
+}
+
+static void update_token_state(int token) {
+    g_last_token_closed_control = false;
+
+    if (token == '(') {
+        g_paren_depth++;
+        if (is_control_keyword(g_last_token)) {
+            push_control_paren();
+        }
+    } else if (token == ')') {
+        if (g_paren_depth > 0) {
+            pop_control_paren_if_needed();
+            g_paren_depth--;
+        }
+    }
+
+    g_last_token = token;
+}
+
+static bool is_restricted_token(int token) {
+    return token == RETURN || token == BREAK || token == CONTINUE || token == THROW;
+}
+
+static bool can_end_statement(int token) {
+    switch (token) {
+        case IDENTIFIER:
+        case NUMBER:
+        case STRING:
+        case TRUE:
+        case FALSE:
+        case NULL_T:
+        case UNDEFINED:
+        case ')':
+        case ']':
+        case '}':
+        case PLUS_PLUS:
+        case MINUS_MINUS:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool suppress_newline_insertion(int token) {
+    return token == '(' || token == '[' || token == '.';
+}
+
+static bool should_insert_semicolon(int last_token, bool last_closed_control, int next_token, bool newline_before, bool is_eof) {
+    if (last_token <= 0) {
+        return false;
+    }
+
+    if (last_token == ';' || last_token == '{') {
+        return false;
+    }
+
+    if (last_closed_control) {
+        return false;
+    }
+
+    if (is_restricted_token(last_token)) {
+        if (newline_before || is_eof || next_token == '}') {
+            return true;
+        }
+        return false;
+    }
+
+    if (!can_end_statement(last_token)) {
+        return false;
+    }
+
+    if (is_eof) {
+        return true;
+    }
+
+    if (next_token == '}') {
+        return true;
+    }
+
+    if (newline_before && !suppress_newline_insertion(next_token) && next_token != ';') {
+        return true;
+    }
+
+    return false;
+}
+
+static int convert_token_type(TokenType type) {
+    switch (type) {
+        case TOK_VAR:        return VAR;
+        case TOK_LET:        return LET;
+        case TOK_CONST:      return CONST;
+        case TOK_FUNCTION:   return FUNCTION;
+        case TOK_IF:         return IF;
+        case TOK_ELSE:       return ELSE;
+        case TOK_FOR:        return FOR;
+        case TOK_WHILE:      return WHILE;
+        case TOK_DO:         return DO;
+        case TOK_RETURN:     return RETURN;
+        case TOK_BREAK:      return BREAK;
+        case TOK_CONTINUE:   return CONTINUE;
+        case TOK_SWITCH:     return SWITCH;
+        case TOK_CASE:       return CASE;
+        case TOK_DEFAULT:    return DEFAULT;
+        case TOK_TRY:        return TRY;
+        case TOK_CATCH:      return CATCH;
+        case TOK_FINALLY:    return FINALLY;
+        case TOK_THROW:      return THROW;
+        case TOK_NEW:        return NEW;
+        case TOK_THIS:       return THIS;
+        case TOK_TYPEOF:     return TYPEOF;
+        case TOK_DELETE:     return DELETE;
+        case TOK_IN:         return IN;
+        case TOK_INSTANCEOF: return INSTANCEOF;
+        case TOK_VOID:       return VOID;
+        case TOK_WITH:       return WITH;
+        case TOK_DEBUGGER:   return DEBUGGER;
+
+        case TOK_TRUE:       return TRUE;
+        case TOK_FALSE:      return FALSE;
+        case TOK_NULL:       return NULL_T;
+        case TOK_UNDEFINED:  return UNDEFINED;
+        case TOK_NUMBER:     return NUMBER;
+        case TOK_STRING:     return STRING;
+        case TOK_IDENTIFIER: return IDENTIFIER;
+
+        case TOK_PLUS_PLUS:  return PLUS_PLUS;
+        case TOK_MINUS_MINUS:return MINUS_MINUS;
+        case TOK_EQ:         return EQ;
+        case TOK_NE:         return NE;
+        case TOK_EQ_STRICT:  return EQ_STRICT;
+        case TOK_NE_STRICT:  return NE_STRICT;
+        case TOK_LE:         return LE;
+        case TOK_GE:         return GE;
+        case TOK_AND:        return AND;
+        case TOK_OR:         return OR;
+        case TOK_LSHIFT:     return LSHIFT;
+        case TOK_RSHIFT:     return RSHIFT;
+        case TOK_URSHIFT:    return URSHIFT;
+        case TOK_PLUS_ASSIGN:    return PLUS_ASSIGN;
+        case TOK_MINUS_ASSIGN:   return MINUS_ASSIGN;
+        case TOK_STAR_ASSIGN:    return STAR_ASSIGN;
+        case TOK_SLASH_ASSIGN:   return SLASH_ASSIGN;
+        case TOK_PERCENT_ASSIGN: return PERCENT_ASSIGN;
+        case TOK_AND_ASSIGN:     return AND_ASSIGN;
+        case TOK_OR_ASSIGN:      return OR_ASSIGN;
+        case TOK_XOR_ASSIGN:     return XOR_ASSIGN;
+        case TOK_LSHIFT_ASSIGN:  return LSHIFT_ASSIGN;
+        case TOK_RSHIFT_ASSIGN:  return RSHIFT_ASSIGN;
+        case TOK_URSHIFT_ASSIGN: return URSHIFT_ASSIGN;
+
+        case TOK_PLUS:       return '+';
+        case TOK_MINUS:      return '-';
+        case TOK_STAR:       return '*';
+        case TOK_SLASH:      return '/';
+        case TOK_PERCENT:    return '%';
+        case TOK_ASSIGN:     return '=';
+        case TOK_LT:         return '<';
+        case TOK_GT:         return '>';
+        case TOK_NOT:        return '!';
+        case TOK_BIT_AND:    return '&';
+        case TOK_BIT_OR:     return '|';
+        case TOK_BIT_XOR:    return '^';
+        case TOK_BIT_NOT:    return '~';
+        case TOK_QUESTION:   return '?';
+        case TOK_COLON:      return ':';
+        case TOK_LPAREN:     return '(';
+        case TOK_RPAREN:     return ')';
+        case TOK_LBRACE:     return '{';
+        case TOK_RBRACE:     return '}';
+        case TOK_LBRACKET:   return '[';
+        case TOK_RBRACKET:   return ']';
+        case TOK_SEMICOLON:  return ';';
+        case TOK_COMMA:      return ',';
+        case TOK_DOT:        return '.';
+
+        case TOK_EOF:        return 0;
+
+        case TOK_ERROR:
+        default:
+            return -1;
+    }
+}
+
+typedef struct PendingToken {
+    int token;
+    bool valid;
+} PendingToken;
+
+static PendingToken g_pending = {0, false};
 
 // 由 parser_main.c 调用，设置输入缓冲区
 void parser_set_input(const char *input) {
     lexer_init(&g_lexer, input);
     g_initialized = 1;
+    g_last_token = 0;
+    g_last_token_closed_control = false;
+    g_paren_depth = 0;
+    g_control_top = 0;
+    g_pending.valid = false;
 }
 
 // bison 调用的词法函数
@@ -22,116 +242,36 @@ int yylex(void) {
         return 0; // 视为 EOF
     }
 
+    if (g_pending.valid) {
+        int tok = g_pending.token;
+        g_pending.valid = false;
+        update_token_state(tok);
+        return tok;
+    }
+
     while (1) {
         Token tk = lexer_next_token(&g_lexer);
-        int ret = 0; // 返回给 bison 的 token 编号
+        bool newline_before = g_lexer.has_newline;
+        int mapped = convert_token_type(tk.type);
+        bool is_eof = (tk.type == TOK_EOF);
 
-        switch (tk.type) {
-            // 关键字
-            case TOK_VAR:        ret = VAR; break;
-            case TOK_LET:        ret = LET; break;
-            case TOK_CONST:      ret = CONST; break;
-            case TOK_FUNCTION:   ret = FUNCTION; break;
-            case TOK_IF:         ret = IF; break;
-            case TOK_ELSE:       ret = ELSE; break;
-            case TOK_FOR:        ret = FOR; break;
-            case TOK_WHILE:      ret = WHILE; break;
-            case TOK_DO:         ret = DO; break;
-            case TOK_RETURN:     ret = RETURN; break;
-            case TOK_BREAK:      ret = BREAK; break;
-            case TOK_CONTINUE:   ret = CONTINUE; break;
-            case TOK_SWITCH:     ret = SWITCH; break;
-            case TOK_CASE:       ret = CASE; break;
-            case TOK_DEFAULT:    ret = DEFAULT; break;
-            case TOK_TRY:        ret = TRY; break;
-            case TOK_CATCH:      ret = CATCH; break;
-            case TOK_FINALLY:    ret = FINALLY; break;
-            case TOK_THROW:      ret = THROW; break;
-            case TOK_NEW:        ret = NEW; break;
-            case TOK_THIS:       ret = THIS; break;
-            case TOK_TYPEOF:     ret = TYPEOF; break;
-            case TOK_DELETE:     ret = DELETE; break;
-            case TOK_IN:         ret = IN; break;
-            case TOK_INSTANCEOF: ret = INSTANCEOF; break;
-            case TOK_VOID:       ret = VOID; break;
-            case TOK_WITH:       ret = WITH; break;
-            case TOK_DEBUGGER:   ret = DEBUGGER; break;
-
-            // 字面量/标识符
-            case TOK_TRUE:       ret = TRUE; break;
-            case TOK_FALSE:      ret = FALSE; break;
-            case TOK_NULL:       ret = NULL_T; break;
-            case TOK_UNDEFINED:  ret = UNDEFINED; break;
-            case TOK_NUMBER:     ret = NUMBER; break;
-            case TOK_STRING:     ret = STRING; break;
-            case TOK_IDENTIFIER: ret = IDENTIFIER; break;
-
-            // 复合运算符与关系/逻辑
-            case TOK_PLUS_PLUS:  ret = PLUS_PLUS; break;
-            case TOK_MINUS_MINUS:ret = MINUS_MINUS; break;
-            case TOK_EQ:         ret = EQ; break;
-            case TOK_NE:         ret = NE; break;
-            case TOK_EQ_STRICT:  ret = EQ_STRICT; break;
-            case TOK_NE_STRICT:  ret = NE_STRICT; break;
-            case TOK_LE:         ret = LE; break;
-            case TOK_GE:         ret = GE; break;
-            case TOK_AND:        ret = AND; break;
-            case TOK_OR:         ret = OR; break;
-            case TOK_LSHIFT:     ret = LSHIFT; break;
-            case TOK_RSHIFT:     ret = RSHIFT; break;
-            case TOK_URSHIFT:    ret = URSHIFT; break;
-            case TOK_PLUS_ASSIGN:    ret = PLUS_ASSIGN; break;
-            case TOK_MINUS_ASSIGN:   ret = MINUS_ASSIGN; break;
-            case TOK_STAR_ASSIGN:    ret = STAR_ASSIGN; break;
-            case TOK_SLASH_ASSIGN:   ret = SLASH_ASSIGN; break;
-            case TOK_PERCENT_ASSIGN: ret = PERCENT_ASSIGN; break;
-            case TOK_AND_ASSIGN:     ret = AND_ASSIGN; break;
-            case TOK_OR_ASSIGN:      ret = OR_ASSIGN; break;
-            case TOK_XOR_ASSIGN:     ret = XOR_ASSIGN; break;
-            case TOK_LSHIFT_ASSIGN:  ret = LSHIFT_ASSIGN; break;
-            case TOK_RSHIFT_ASSIGN:  ret = RSHIFT_ASSIGN; break;
-            case TOK_URSHIFT_ASSIGN: ret = URSHIFT_ASSIGN; break;
-
-            // 单字符运算符/分隔符：直接返回字符
-            case TOK_PLUS:       ret = '+'; break;
-            case TOK_MINUS:      ret = '-'; break;
-            case TOK_STAR:       ret = '*'; break;
-            case TOK_SLASH:      ret = '/'; break;
-            case TOK_PERCENT:    ret = '%'; break;
-            case TOK_ASSIGN:     ret = '='; break;
-            case TOK_LT:         ret = '<'; break;
-            case TOK_GT:         ret = '>' ; break;
-            case TOK_NOT:        ret = '!'; break;
-            case TOK_BIT_AND:    ret = '&'; break;
-            case TOK_BIT_OR:     ret = '|'; break;
-            case TOK_BIT_XOR:    ret = '^'; break;
-            case TOK_BIT_NOT:    ret = '~'; break;
-            case TOK_QUESTION:   ret = '?'; break;
-            case TOK_COLON:      ret = ':'; break;
-            case TOK_LPAREN:     ret = '('; break;
-            case TOK_RPAREN:     ret = ')'; break;
-            case TOK_LBRACE:     ret = '{'; break;
-            case TOK_RBRACE:     ret = '}'; break;
-            case TOK_LBRACKET:   ret = '['; break;
-            case TOK_RBRACKET:   ret = ']'; break;
-            case TOK_SEMICOLON:  ret = ';'; break;
-            case TOK_COMMA:      ret = ','; break;
-            case TOK_DOT:        ret = '.'; break;
-
-            case TOK_EOF:
-                token_free(&tk);
-                return 0; // EOF
-
-            case TOK_ERROR:
-            default:
-                fprintf(stderr, "Lexical error at line %d, column %d\n", tk.line, tk.column);
-                token_free(&tk);
-                return 0; // 终止解析
+        if (mapped < 0) {
+            fprintf(stderr, "Lexical error at line %d, column %d\n", tk.line, tk.column);
+            token_free(&tk);
+            return 0;
         }
 
-        // 释放 token 持有的字符串，解析阶段不保留语义值
         token_free(&tk);
-        return ret;
+
+        if (should_insert_semicolon(g_last_token, g_last_token_closed_control, mapped, newline_before, is_eof)) {
+            g_pending.token = mapped;
+            g_pending.valid = true;
+            update_token_state(';');
+            return ';';
+        }
+
+        update_token_state(mapped);
+        return mapped;
     }
 }
 

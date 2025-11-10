@@ -38,7 +38,7 @@ void yyerror(const char *s);
 %left '<' '>' LE GE
 %left '+' '-'
 %left '*' '/' '%'
-%right UMINUS '!' '~'
+%right UMINUS '!' '~' PLUS_PLUS MINUS_MINUS
 
 %%
 
@@ -173,6 +173,8 @@ unary_expr
   | '-' unary_expr %prec UMINUS
   | '!' unary_expr
   | '~' unary_expr
+  | PLUS_PLUS unary_expr
+  | MINUS_MINUS unary_expr
   ;
 
 postfix_expr
@@ -197,6 +199,10 @@ primary_expr
   : IDENTIFIER
   | NUMBER
   | STRING
+  | TRUE
+  | FALSE
+  | NULL_T
+  | UNDEFINED
   | '(' expr ')'
   | array_literal
   | object_literal
@@ -261,6 +267,8 @@ unary_expr_no_obj
   | '-' unary_expr_no_obj %prec UMINUS
   | '!' unary_expr_no_obj
   | '~' unary_expr_no_obj
+  | PLUS_PLUS unary_expr_no_obj
+  | MINUS_MINUS unary_expr_no_obj
   ;
 
 postfix_expr_no_obj
@@ -275,6 +283,10 @@ primary_no_obj
   : IDENTIFIER
   | NUMBER
   | STRING
+  | TRUE
+  | FALSE
+  | NULL_T
+  | UNDEFINED
   | '(' expr ')'
   | array_literal
   ;
