@@ -65,7 +65,7 @@ PARSER_OBJECTS := \
 
 TEST_FILES := $(wildcard $(TEST_DIR)/*.js)
 
-.PHONY: all parser test clean distclean help toolchain-check debug-vars debug-path
+.PHONY: all parser test clean distclean help toolchain-check debug-vars debug-path FORCE
 
 all: $(LEXER_TARGET) $(PARSER_TARGET)
 
@@ -175,6 +175,25 @@ test: $(PARSER_TARGET)
 	else \
 		echo "TEST SUITE PASSED - All $$passed test(s) passed"; \
 	fi
+
+# Allow running a specific test file, e.g. make test/test_simple.js
+$(TEST_DIR)/%.js: $(PARSER_TARGET) FORCE
+	@echo "Running parser test: $@"
+	@if echo "$@" | grep "error" > /dev/null; then \
+		if ./$(PARSER_TARGET) $@; then \
+			echo "  [result] FAIL (Expected error, but parsed successfully)"; \
+		else \
+			echo "  [result] PASS (Expected error caught)"; \
+		fi; \
+	else \
+		if ./$(PARSER_TARGET) $@; then \
+			echo "  [result] PASS"; \
+		else \
+			echo "  [result] FAIL"; \
+		fi; \
+	fi
+
+FORCE:
 
 clean:
 	@echo "Cleaning build artifacts"
