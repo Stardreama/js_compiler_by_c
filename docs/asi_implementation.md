@@ -6,7 +6,7 @@
 
 - **兼容范围**：遵循 ECMAScript 5.1 第 11.9 节的三类触发条件（换行、EOF、受限产生式）。
 - **实现位置**：`parser_lex_adapter.c` 在向 Bison 交付 token 前决定是否插入虚拟分号；词法阶段无需改动。
-- **测试覆盖**：`build.bat test-parse` / `make test-parse` 会顺序运行 `tests/test_asi_basic.js`、`tests/test_asi_return.js` 与 `tests/test_asi_control.js`。
+- **测试覆盖**：`build.bat test-parse` / `make test-parse` 会顺序运行 `test/test_asi_basic.js`、`test/test_asi_return.js` 与 `test/test_asi_control.js`。
 
 ## 触发条件明细
 
@@ -65,9 +65,9 @@ static bool should_insert_semicolon(int last_token,
 
 | 文件                        | 场景                 | 预期         | 备注             |
 | --------------------------- | -------------------- | ------------ | ---------------- |
-| `tests/test_asi_basic.js`   | `a` 换行 `++b`       | 分号自动插入 | 也覆盖链式语句   |
-| `tests/test_asi_return.js`  | `return` 换行        | `return;`    | 验证受限产生式   |
-| `tests/test_asi_control.js` | `if (true)` 单行语句 | 不误插分号   | 校验控制语句保护 |
+| `test/test_asi_basic.js`   | `a` 换行 `++b`       | 分号自动插入 | 也覆盖链式语句   |
+| `test/test_asi_return.js`  | `return` 换行        | `return;`    | 验证受限产生式   |
+| `test/test_asi_control.js` | `if (true)` 单行语句 | 不误插分号   | 校验控制语句保护 |
 
 ## 常见扩展需求
 

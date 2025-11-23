@@ -3,9 +3,9 @@ setlocal enabledelayedexpansion
 REM JavaScript 词法分析器构建脚本 (Windows)
 
 
-set "GCC=C:\Program Files (x86)\mingw64\bin\gcc.exe"
-set "RE2C=E:\Application\MSYS2\usr\bin\re2c.exe"
-set "BISON=E:\Application\MSYS2\usr\bin\bison.exe"
+@REM set "GCC=C:\Program Files (x86)\mingw64\bin\gcc.exe"
+@REM set "RE2C=E:\Application\MSYS2\usr\bin\re2c.exe"
+@REM set "BISON=E:\Application\MSYS2\usr\bin\bison.exe"
 set TARGET=js_lexer.exe
 
 echo ================================================
@@ -82,11 +82,11 @@ echo ================================================
 echo Running Test
 echo ================================================
 echo.
-if not exist tests\test_basic.js (
-    echo ERROR: Test file tests\test_basic.js not found!
+if not exist test\test_basic.js (
+    echo ERROR: Test file test\test_basic.js not found!
     exit /b 1
 )
-%TARGET% tests\test_basic.js
+%TARGET% test\test_basic.js
 goto end
 
 :help
@@ -151,7 +151,7 @@ if errorlevel 1 goto end
 
 echo.
 echo ================================================
-echo Running All Tests in tests\ folder
+echo Running All Tests in test\ folder
 echo ================================================
 echo.
 
@@ -159,8 +159,8 @@ set TOTAL=0
 set PASSED=0
 set FAILED=0
 
-REM 遍历 tests 文件夹中的所有 .js 文件
-for %%F in (tests\*.js) do (
+REM 遍历 test 文件夹中的所有 .js 文件
+for %%F in (test\*.js) do (
     set /a TOTAL+=1
     
     REM 检查是否是错误测试用例（文件名包含 test_error 或 temp）

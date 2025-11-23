@@ -282,18 +282,18 @@ lexer.re:89:25: warning: unused variable 'comment_start'
 
 项目包含以下测试用例：
 
-- `tests/test_basic.js` - 综合基本语法测试 ✅
-- `tests/test_simple.js` - 简单功能测试 ✅
-- `tests/test_asi_basic.js` - ASI 基础场景 ✅
-- `tests/test_asi_return.js` - `return` 受限产生式 ✅
-- `tests/test_asi_control.js` - 与控制语句的协同 ✅
-- `tests/test_while.js` - while/do-while + break/continue + 标签 ✅
-- `tests/test_switch.js` - switch-case/default 场景 ✅
-- `tests/test_try.js` - try-catch-finally / with ✅
-- `tests/test_operators.js` - 复合赋值、按位、三元与逗号组合 ✅
-- `tests/test_error_missing_semicolon.js` - 缺少分号错误测试 ✅
-- `tests/test_error_object.js` - 对象字面量错误测试 ✅
-- `tests/test_error_cases.js` - 错误用例集合（需逐个激活测试）
+- `test/test_basic.js` - 综合基本语法测试 ✅
+- `test/test_simple.js` - 简单功能测试 ✅
+- `test/test_asi_basic.js` - ASI 基础场景 ✅
+- `test/test_asi_return.js` - `return` 受限产生式 ✅
+- `test/test_asi_control.js` - 与控制语句的协同 ✅
+- `test/test_while.js` - while/do-while + break/continue + 标签 ✅
+- `test/test_switch.js` - switch-case/default 场景 ✅
+- `test/test_try.js` - try-catch-finally / with ✅
+- `test/test_operators.js` - 复合赋值、按位、三元与逗号组合 ✅
+- `test/test_error_missing_semicolon.js` - 缺少分号错误测试 ✅
+- `test/test_error_object.js` - 对象字面量错误测试 ✅
+- `test/test_error_cases.js` - 错误用例集合（需逐个激活测试）
 
 ## 技术细节
 
@@ -321,7 +321,7 @@ js_compiler_by_c/
 ├── parser.y                   # Bison 语法分析器源文件（生成 parser.c / parser.h）
 ├── parser_lex_adapter.c       # 词法-语法适配层（含 ASI 逻辑）
 ├── parser_main.c              # 语法分析器入口（支持 --dump-ast）
-├── tests/
+├── test/
 │   ├── test_basic.js          # 综合语法
 │   ├── test_simple.js         # 小型示例
 │   ├── test_asi_basic.js      # ASI 基础
@@ -355,7 +355,7 @@ js_compiler_by_c/
 
 ### Q: 如何添加新的测试用例？
 
-**A:** 在 `tests/` 目录创建新的 `.js` 文件，然后运行：
+**A:** 在 `test/` 目录创建新的 `.js` 文件，然后运行：
 
 ```bash
 .\js_parser.exe tests\your_test.js

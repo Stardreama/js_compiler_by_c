@@ -41,7 +41,7 @@
   - 9 个测试用例全部通过
   - 词法分析测试
   - 语法验证测试（含运算符覆盖）
-  - 新增 `tests/test_operators.js` 检查复合赋值、按位与三元组合
+  - 新增 `test/test_operators.js` 检查复合赋值、按位与三元组合
   - 错误检测测试
 
 - ✅ **文档**
@@ -80,9 +80,9 @@ ASI (Automatic Semicolon Insertion) 是 JavaScript 的核心特性，允许省�
 
 - [x] **Task 1.3**: 测试用例开发
 
-  - 新增 `tests/test_asi_basic.js`（链式语句 + `a\n++b`）
-  - 新增 `tests/test_asi_return.js`（`return` 换行）
-  - 新增 `tests/test_asi_control.js`（验证 `if`/`else` 不误插）
+  - 新增 `test/test_asi_basic.js`（链式语句 + `a\n++b`）
+  - 新增 `test/test_asi_return.js`（`return` 换行）
+  - 新增 `test/test_asi_control.js`（验证 `if`/`else` 不误插）
   - `build.bat`/`Makefile` 扩展 `test-parse` 覆盖上述用例
 
 - [x] **Task 1.4**: 文档更新
@@ -151,7 +151,7 @@ ASI (Automatic Semicolon Insertion) 是 JavaScript 的核心特性，允许省�
 
 - `parser.y` 补齐 while / do-while / switch-case / try-catch-finally / with / 标签语句 等 ES5 语句形态，新增 break、continue（含带标签）与 throw 语义动作。
 - `ast.h` / `ast.c` 增加相应节点类型（如 `AST_WHILE_STMT`、`AST_SWITCH_STMT`、`AST_TRY_STMT`、`AST_WITH_STMT` 等），打印、遍历、释放逻辑同步扩展。
-- 新增测试用例 `tests/test_while.js`、`tests/test_switch.js`、`tests/test_try.js`，覆盖循环跳转、case fall-through、异常处理与 with 语句。
+- 新增测试用例 `test/test_while.js`、`test/test_switch.js`、`test/test_try.js`，覆盖循环跳转、case fall-through、异常处理与 with 语句。
 - `build.bat` / `Makefile` 的 `test-parse` 目标现默认执行全部 8 个正向场景，快速验证全量语句支持。
 
 ### 任务清单（P3）
@@ -159,39 +159,39 @@ ASI (Automatic Semicolon Insertion) 是 JavaScript 的核心特性，允许省�
 - [x] **Task 3.1**: while 循环
 
   - 在 parser.y 中添加 while 语法规则并构建 `AST_WHILE_STMT`
-  - 创建 `tests/test_while.js` 覆盖嵌套循环与 break/continue
+  - 创建 `test/test_while.js` 覆盖嵌套循环与 break/continue
 
 - [x] **Task 3.2**: do-while 循环
 
   - 在 parser.y 中添加 do-while 语义动作，兼容无分号场景
-  - 与 `tests/test_while.js` 共用场景验证 ASI 行为
+  - 与 `test/test_while.js` 共用场景验证 ASI 行为
 
 - [x] **Task 3.3**: switch-case 语句
 
   - 支持 case/default 子句列表与 fall-through
-  - `tests/test_switch.js` 验证 default、连续 case、break
+  - `test/test_switch.js` 验证 default、连续 case、break
 
 - [x] **Task 3.4**: try-catch-finally 异常处理
 
   - 构建 `AST_TRY_STMT`、`AST_CATCH_CLAUSE`，支持可选 finally
-  - `tests/test_try.js` 验证 catch 参数绑定与 finally 必执行
+  - `test/test_try.js` 验证 catch 参数绑定与 finally 必执行
 
 - [x] **Task 3.5**: with 语句
 
   - 在 parser.y/AST 中加入 with 语义
-  - `tests/test_try.js` 结合 with 场景验证
+  - `test/test_try.js` 结合 with 场景验证
 
 - [x] **Task 3.6**: 标签语句和 labeled break/continue
   - 实现 `IDENTIFIER ':' stmt`、`break label`、`continue label`
-  - `tests/test_while.js` 验证带标签跳转
+  - `test/test_while.js` 验证带标签跳转
 
 ### 问题与修复记录（P3）
 
 - **with 语句解析失败（已解决）**
-  - **现象**: `tests/test_try.js` 在解析 `with (obj) { ... }` 时抛出 `unexpected ';', expecting '}'` 错误。
+  - **现象**: `test/test_try.js` 在解析 `with (obj) { ... }` 时抛出 `unexpected ';', expecting '}'` 错误。
   - **原因**: 适配层的 ASI 逻辑在对象字面量的闭合 `}` 前误插入分号，导致解析堆栈提前结束。
   - **修复**: 在 `parser_lex_adapter.c` 新增括号类型栈，区分语句块与对象字面量；仅在退出语句块时允许自动插入分号，避免对象字面量被破坏。
-  - **验证**: `build.bat test-parse` 全量通过，`tests/test_try.js` 成功覆盖 try/catch/finally + with 组合场景。
+  - **验证**: `build.bat test-parse` 全量通过，`test/test_try.js` 成功覆盖 try/catch/finally + with 组合场景。
 
 ### 技术要点
 
@@ -211,7 +211,7 @@ ASI (Automatic Semicolon Insertion) 是 JavaScript 的核心特性，允许省�
 
 - `parser.y` 新增条件表达式、按位/位移表达式、逗号表达式与全量复合赋值规则，统一调整优先级声明。
 - `ast.h` / `ast.c` 添加 `AST_CONDITIONAL_EXPR`、`AST_SEQUENCE_EXPR` 节点，完善遍历、打印与释放流程。
-- 扩展一元运算支持 `typeof` / `delete` / `void`，并将 `tests/test_operators.js` 纳入 `build.bat` / `Makefile` 的 `test-parse` 验证。
+- 扩展一元运算支持 `typeof` / `delete` / `void`，并将 `test/test_operators.js` 纳入 `build.bat` / `Makefile` 的 `test-parse` 验证。
 
 ### 任务清单（P4）
 
@@ -236,7 +236,7 @@ ASI (Automatic Semicolon Insertion) 是 JavaScript 的核心特性，允许省�
 
 ### 测试与验证
 
-- ✅ 新增 `tests/test_operators.js` 覆盖复合赋值、按位、位移、三元与逗号等场景
+- ✅ 新增 `test/test_operators.js` 覆盖复合赋值、按位、位移、三元与逗号等场景
 - ✅ `build.bat test-parse` / `make test-parse` 默认执行运算符回归测试
 
 ---
@@ -372,8 +372,8 @@ ASI (Automatic Semicolon Insertion) 是 JavaScript 的核心特性，允许省�
 
 - [x] **Test 1**: 创建完整的测试套件
 
-  - 新增正向用例：`tests/test_functions.js`（函数声明/调用链）、`tests/test_for_loops.js`（多种 for 结构）、`tests/test_literals.js`（对象/数组文字与访问）
-  - 新增负向用例：`tests/test_error_unclosed_block.js`、`tests/test_error_invalid_for.js`（覆盖缺失 `}` / `)` 错误路径）
+  - 新增正向用例：`test/test_functions.js`（函数声明/调用链）、`test/test_for_loops.js`（多种 for 结构）、`test/test_literals.js`（对象/数组文字与访问）
+  - 新增负向用例：`test/test_error_unclosed_block.js`、`test/test_error_invalid_for.js`（覆盖缺失 `}` / `)` 错误路径）
   - `build.bat test-parse` / `make test-parse` 默认跑通 12 个正向场景
 
 - [ ] **Test 2**: 模糊测试 (Fuzzing)

@@ -2,10 +2,10 @@
 
 ## 概要
 
-`js_compiler_by_c` 是一个面向 ES5 子集的语法前端，使用 re2c + Bison 在 C 语言环境下实现：
+`js_compiler_by_c` 是一个面向 ES5 子集的语法前端，使用本地打包的 re2c + Bison 在 C 语言环境下实现：
 
-- **词法分析器**：`lexer.re` 生成的扫描器负责 token 切分以及行列跟踪；
-- **语法分析器**：`parser.y` 生成的 LR 语法，集成自动分号插入（ASI）和 AST 构建；
+- **词法分析器**：`src/lexer.re` 生成的扫描器负责 token 切分以及行列跟踪；
+- **语法分析器**：`src/parser.y` 生成的 LR 语法，集成自动分号插入（ASI）和 AST 构建；
 - **AST 能力**：`ast.c/ast.h` 提供节点构造、打印（`--dump-ast`）与释放；
 - **双执行程序**：`js_lexer.exe` 用于 token dump，`js_parser.exe` 进行语法校验与 AST 输出。
 
@@ -17,61 +17,47 @@
 - **运算符层级完善**：支持位运算、位移、`?:`、复合赋值、`typeof/delete/void` 与逗号序列；
 - **语句覆盖**：含标签语句、with、try-catch-finally、switch、do-while 等 ES5 常见结构；
 - **AST 工具**：`js_parser.exe --dump-ast file.js` 可打印缩进树，便于调试和后续静态分析；
-- **测试脚本**：`build.bat test-parse` / `make test-parse` 一次性跑通 9 个正向用例及错误用例集。
+- **测试脚本**：`make test` 一次性跑通 `test/` 下的正向/负向 JS 用例。
 
 ## 构建与运行
 
-### Windows（PowerShell）
-
-```powershell
-cd d:\project\js_compiler_by_c
-build.bat parser      # 生成 js_parser.exe
-build.bat test-parse  # 重建并运行全部语法测试
-```
-
-### MSYS2 / Linux
+项目提供统一的 `Makefile`，只需一个工具链即可在 **Windows（MSYS2/Git Bash）**、**Linux** 和 **macOS** 上构建：
 
 ```bash
 cd /path/to/js_compiler_by_c
-make parser       # 构建语法分析器
-make test-parse   # 执行回归测试
+make              # 生成 js_lexer(.exe)，默认产物
+make parser       # 额外生成 js_parser(.exe)
+make test         # 在 test/ 目录中跑通所有 JS 用例
+make clean        # 清理 build/ 与可执行文件
 ```
 
-### 常用命令
-
-```powershell
-build.bat          # 构建 js_lexer.exe
-build.bat clean    # 清理生成文件
-build.bat test     # 构建词法分析器并跑基础 token 测试
-build.bat help     # 查看脚本说明
-```
+> 📦 **内置工具链**：`bin/` 目录需放置对应平台的 `gcc`、`re2c`、`bison` 可执行文件（Windows 使用 `.exe` 扩展，Linux/macOS 则为无扩展 ELF/Mach-O）。Windows 环境推荐直接把 MSYS2 的 `mingw64/` 目录拷贝到 `bin/mingw64/`，并把 `usr/bin` 精简副本放到 `bin/bin_usr/`（内含 `bison.exe`、`re2c.exe` 等），`Makefile` 会自动将这两个子目录加入 `PATH`。Linux/macOS 可继续把二进制直接放到 `bin/` 或复用系统级工具链。
 
 语法分析器支持 AST 输出：
 
-```powershell
-build.bat parser
-js_parser.exe --dump-ast tests\test_basic.js
+```bash
+make parser
+./js_parser --dump-ast test/test_basic.js
 ```
 
 ## 目录速览
 
 ```text
 js_compiler_by_c/
-├── ast.c / ast.h              # AST 节点、打印、释放
-├── build.bat                  # Windows 构建脚本
-├── docs/                      # 中文文档与清单
-│   ├── BUILD.md               # 构建与调试指南
-│   ├── TEST_REPORT.md         # 最近测试结果
-│   ├── asi_implementation.md  # ASI 逻辑详解
-│   ├── parser.md / lex.md     # 语法 / 词法说明
-│   └── todo.md                # 任务与进度
-├── lexer.re                   # re2c 词法描述
-├── main.c                     # js_lexer.exe 入口
-├── Makefile                   # MSYS2/Linux 构建脚本
-├── parser.y                   # Bison 语法描述
-├── parser_lex_adapter.c       # 词法-语法桥接 + ASI
-├── parser_main.c              # js_parser.exe 入口
-├── tests/                     # JS 用例集
+├── Makefile                   # 跨平台构建入口（make/make parser/make test）
+├── bin/                      # 打包工具链（Windows: mingw64/ + bin_usr/，其他平台直接平铺）
+├── build/                    # make 生成的临时目录（obj/generated）
+├── docs/                     # 中文文档与清单
+├── lib/                      # 预留静态库/第三方依赖（占位）
+├── src/                      # 所有 C / re2c / bison 源文件
+│   ├── ast.c / ast.h
+│   ├── lexer.re
+│   ├── main.c
+│   ├── parser.y
+│   ├── parser_lex_adapter.c
+│   ├── parser_main.c
+│   └── token.h
+├── test/                     # JS 用例集（make test 自动遍历）
 │   ├── test_basic.js
 │   ├── test_simple.js
 │   ├── test_asi_basic.js
@@ -80,18 +66,19 @@ js_compiler_by_c/
 │   ├── test_error_cases.js
 │   ├── test_error_missing_semicolon.js
 │   ├── test_error_object.js
+│   ├── test_error_unclosed_block.js
 │   ├── test_operators.js
 │   ├── test_switch.js
 │   ├── test_try.js
 │   └── test_while.js
-└── token.h                    # Token 定义与词法状态
+└── 项目介绍.md / PROJECT_OVERVIEW.md 等补充文档
 ```
 
 ## 测试矩阵
 
-- `build.bat test-parse` / `make test-parse`：顺序执行 9 个正向用例（含运算符、ASI、控制流）并确保全部通过；
-- 错误用例集：`tests/test_error_cases.js`、`tests/test_error_object.js`、`tests/test_error_missing_semicolon.js` 用于验证诊断信息；
-- 词法 smoke 测试：`build.bat test` 或手动运行 `js_lexer.exe tests\test_basic.js`。
+- `make test`：顺序执行 `test/` 下的正向/负向用例，遇到非预期结果会立即标红；
+- 错误用例集：`test/test_error_cases.js`、`test/test_error_object.js`、`test/test_error_missing_semicolon.js` 用于验证诊断信息；
+- 词法 smoke 测试：`./js_lexer$(EXE) test/test_basic.js`。
 
 ## 已知限制
 
@@ -108,4 +95,4 @@ js_compiler_by_c/
 
 ---
 
-**最后更新**：2025 年 11 月 10 日
+**最后更新**：2025 年 11 月 17 日

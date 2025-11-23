@@ -29,7 +29,7 @@
 - 数组字面量：`[a, b, c]`（支持尾随逗号）
 - 对象字面量：`{ key: value, ... }`（支持尾随逗号；键可为标识符或字符串）
 
-> 注：上述能力足以解析 `tests/test_basic.js`，并能对常见语法错误（漏冒号/括号/逗号/分号等）给出明确报错。
+> 注：上述能力足以解析 `test/test_basic.js`，并能对常见语法错误（漏冒号/括号/逗号/分号等）给出明确报错。
 
 ---
 
@@ -64,7 +64,7 @@
 - `Syntax error: syntax error, unexpected ';', expecting ')'`
 - `Syntax error: syntax error, unexpected NUMBER, expecting ',' or ']'`
 
-示例（来源：`tests/test_error_cases.js`，一次只激活一个 CASE）：
+示例（来源：`test/test_error_cases.js`，一次只激活一个 CASE）：
 - 对象属性缺少冒号：`{ name "test" }` → 期待 `:`
 - 函数调用漏右括号：`console.log("hi";` → 期待 `)`
 - 数组缺逗号：`[1, 2 3]` → 期待 `,` 或 `]`
@@ -87,13 +87,13 @@ make parser
 
 - 检测样例：
 ```bash
-./js_parser.exe ./tests/test_basic.js
+./js_parser.exe ./test/test_basic.js
 # 预期：Parsing successful!
 ```
 
 - 检测错误用例（仅激活一个 CASE）：
 ```bash
-./js_parser.exe ./tests/test_error_cases.js
+./js_parser.exe ./test/test_error_cases.js
 # 预期：Syntax error: ...
 ```
 
@@ -114,8 +114,8 @@ cd d:\EduLibrary\OurEDA\js_compiler_by_c
 - `Makefile`：
   - `make parser` 生成 `parser.c/parser.h` 并编译 `js_parser.exe`
   - `make test-parse` 运行解析器对样例文件进行检测
-- `tests/test_basic.js`：语法正确的样例。
-- `tests/test_error_cases.js`：常见语法错误集合（一次只激活一个用例）。
+- `test/test_basic.js`：语法正确的样例。
+- `test/test_error_cases.js`：常见语法错误集合（一次只激活一个用例）。
 
 > 若编辑器提示找不到 `parser.h`，先执行一次 `make parser` 生成。
 

@@ -56,7 +56,7 @@ js_compiler_by_c/
 │   ├── asi_implementation.md
 │   ├── lex.md / parser.md
 │   └── todo.md
-└── tests/                     # 正/负向测试用例
+└── test/                     # 正/负向测试用例
     ├── test_basic.js
     ├── test_functions.js
     ├── test_for_loops.js
@@ -182,27 +182,27 @@ make clean      # 清理
 
 | 测试文件                    | 覆盖点                                     |
 | --------------------------- | ------------------------------------------ |
-| `tests/test_basic.js`       | 基础声明、控制流、数组/对象                |
-| `tests/test_simple.js`      | 函数定义与调用                             |
-| `tests/test_functions.js`   | 函数嵌套、循环调用、别名                   |
-| `tests/test_for_loops.js`   | 初始化/无初始化 for、嵌套、无限循环        |
-| `tests/test_literals.js`    | 多层对象/数组、条件表达式                  |
-| `tests/test_asi_basic.js`   | ASI 基础场景、`a\n++b`                     |
-| `tests/test_asi_return.js`  | `return` 受限产生式                        |
-| `tests/test_asi_control.js` | ASI 与 `if/else` 协同                      |
-| `tests/test_while.js`       | while/do-while、标签                       |
-| `tests/test_switch.js`      | switch/default、fall-through               |
-| `tests/test_try.js`         | try/catch/finally、with                    |
-| `tests/test_operators.js`   | 复合赋值、按位、逗号、`typeof/delete/void` |
+| `test/test_basic.js`       | 基础声明、控制流、数组/对象                |
+| `test/test_simple.js`      | 函数定义与调用                             |
+| `test/test_functions.js`   | 函数嵌套、循环调用、别名                   |
+| `test/test_for_loops.js`   | 初始化/无初始化 for、嵌套、无限循环        |
+| `test/test_literals.js`    | 多层对象/数组、条件表达式                  |
+| `test/test_asi_basic.js`   | ASI 基础场景、`a\n++b`                     |
+| `test/test_asi_return.js`  | `return` 受限产生式                        |
+| `test/test_asi_control.js` | ASI 与 `if/else` 协同                      |
+| `test/test_while.js`       | while/do-while、标签                       |
+| `test/test_switch.js`      | switch/default、fall-through               |
+| `test/test_try.js`         | try/catch/finally、with                    |
+| `test/test_operators.js`   | 复合赋值、按位、逗号、`typeof/delete/void` |
 
 ### 7.2 负向测试概览
 
 | 测试文件                                | 预期错误         |
 | --------------------------------------- | ---------------- |
-| `tests/test_error_missing_semicolon.js` | 缺少分号         |
-| `tests/test_error_object.js`            | 对象属性缺冒号   |
-| `tests/test_error_unclosed_block.js`    | 缺少 `}`         |
-| `tests/test_error_invalid_for.js`       | `for` 头部缺 `)` |
+| `test/test_error_missing_semicolon.js` | 缺少分号         |
+| `test/test_error_object.js`            | 对象属性缺冒号   |
+| `test/test_error_unclosed_block.js`    | 缺少 `}`         |
+| `test/test_error_invalid_for.js`       | `for` 头部缺 `)` |
 
 ### 7.3 执行方式
 

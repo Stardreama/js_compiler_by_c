@@ -212,10 +212,10 @@
 ### 问题回顾与解决
 
 - **with 语句解析失败（已解决）**
-  - **触发场景**: `tests/test_try.js` 在执行 `build.bat test-parse` 时提示 `unexpected ';', expecting '}'`。
+  - **触发场景**: `test/test_try.js` 在执行 `build.bat test-parse` 时提示 `unexpected ';', expecting '}'`。
   - **原因分析**: 适配层 ASI 逻辑在对象字面量闭合 `}` 前错误插入分号，破坏了 `with` 语句块结构。
   - **修复措施**: 在 `parser_lex_adapter.c` 引入括号类型栈，区分语句块与对象字面量，仅对语句块允许自动插入分号。
-  - **验证结果**: 重新执行 `build.bat test-parse`，全部 10 个测试文件通过，`tests/test_try.js` 正常解析。
+  - **验证结果**: 重新执行 `build.bat test-parse`，全部 10 个测试文件通过，`test/test_try.js` 正常解析。
 
 ## 编译警告分析
 
@@ -350,23 +350,23 @@ lexer.re:89:25: warning: unused variable 'comment_start'
 
 ## 测试文件清单
 
-- `js_lexer.exe tests/test_basic.js` - 词法分析输出检查 ✅（命令：`js_lexer.exe tests\test_basic.js`）
-- `tests/test_basic.js` - 综合基本语法测试 ✅（命令：`js_parser.exe tests\test_basic.js`）
-- `tests/test_simple.js` - 简单函数与表达式测试 ✅（命令：`js_parser.exe tests\test_simple.js`）
-- `tests/test_functions.js` - 函数嵌套与循环调用测试 ✅（命令：`js_parser.exe tests\test_functions.js`）
-- `tests/test_for_loops.js` - 多形态 for 循环测试 ✅（命令：`js_parser.exe tests\test_for_loops.js`）
-- `tests/test_literals.js` - 对象与数组文字解析测试 ✅（命令：`js_parser.exe tests\test_literals.js`）
-- `tests/test_asi_basic.js` - ASI 基础语句覆盖 ✅（命令：`js_parser.exe tests\test_asi_basic.js`）
-- `tests/test_asi_return.js` - 受限产生式（return）测试 ✅（命令：`js_parser.exe tests\test_asi_return.js`）
-- `tests/test_asi_control.js` - ASI 与控制流协同测试 ✅（命令：`js_parser.exe tests\test_asi_control.js`）
-- `tests/test_while.js` - while/do-while + 标签跳转测试 ✅（命令：`js_parser.exe tests\test_while.js`）
-- `tests/test_switch.js` - switch-case/default 控制流测试 ✅（命令：`js_parser.exe tests\test_switch.js`）
-- `tests/test_try.js` - try/catch-finally + with 组合测试 ✅（命令：`js_parser.exe tests\test_try.js`）
-- `tests/test_operators.js` - 运算符与复合赋值覆盖 ✅（命令：`js_parser.exe tests\test_operators.js`）
-- `tests/test_error_missing_semicolon.js` - 缺少分号错误测试 ✅（命令：`js_parser.exe tests\test_error_missing_semicolon.js`）
-- `tests/test_error_object.js` - 对象字面量缺冒号错误测试 ✅（命令：`js_parser.exe tests\test_error_object.js`）
-- `tests/test_error_unclosed_block.js` - 缺失右花括号错误测试 ✅（命令：`js_parser.exe tests\test_error_unclosed_block.js`）
-- `tests/test_error_invalid_for.js` - for 头部缺右括号错误测试 ✅（命令：`js_parser.exe tests\test_error_invalid_for.js`）
+- `js_lexer.exe test/test_basic.js` - 词法分析输出检查 ✅（命令：`js_lexer.exe tests\test_basic.js`）
+- `test/test_basic.js` - 综合基本语法测试 ✅（命令：`js_parser.exe tests\test_basic.js`）
+- `test/test_simple.js` - 简单函数与表达式测试 ✅（命令：`js_parser.exe tests\test_simple.js`）
+- `test/test_functions.js` - 函数嵌套与循环调用测试 ✅（命令：`js_parser.exe tests\test_functions.js`）
+- `test/test_for_loops.js` - 多形态 for 循环测试 ✅（命令：`js_parser.exe tests\test_for_loops.js`）
+- `test/test_literals.js` - 对象与数组文字解析测试 ✅（命令：`js_parser.exe tests\test_literals.js`）
+- `test/test_asi_basic.js` - ASI 基础语句覆盖 ✅（命令：`js_parser.exe tests\test_asi_basic.js`）
+- `test/test_asi_return.js` - 受限产生式（return）测试 ✅（命令：`js_parser.exe tests\test_asi_return.js`）
+- `test/test_asi_control.js` - ASI 与控制流协同测试 ✅（命令：`js_parser.exe tests\test_asi_control.js`）
+- `test/test_while.js` - while/do-while + 标签跳转测试 ✅（命令：`js_parser.exe tests\test_while.js`）
+- `test/test_switch.js` - switch-case/default 控制流测试 ✅（命令：`js_parser.exe tests\test_switch.js`）
+- `test/test_try.js` - try/catch-finally + with 组合测试 ✅（命令：`js_parser.exe tests\test_try.js`）
+- `test/test_operators.js` - 运算符与复合赋值覆盖 ✅（命令：`js_parser.exe tests\test_operators.js`）
+- `test/test_error_missing_semicolon.js` - 缺少分号错误测试 ✅（命令：`js_parser.exe tests\test_error_missing_semicolon.js`）
+- `test/test_error_object.js` - 对象字面量缺冒号错误测试 ✅（命令：`js_parser.exe tests\test_error_object.js`）
+- `test/test_error_unclosed_block.js` - 缺失右花括号错误测试 ✅（命令：`js_parser.exe tests\test_error_unclosed_block.js`）
+- `test/test_error_invalid_for.js` - for 头部缺右括号错误测试 ✅（命令：`js_parser.exe tests\test_error_invalid_for.js`）
 
 ---
 
