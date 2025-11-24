@@ -58,10 +58,11 @@ static int g_parser_error_count = 0;
 %left LSHIFT RSHIFT URSHIFT
 %left '+' '-'
 %left '*' '/' '%'
+%right NEW
 %right UMINUS '!' '~' TYPEOF DELETE VOID PLUS_PLUS MINUS_MINUS
 
 %type <node> program stmt block var_stmt opt_init return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init opt_expr catch_clause finally_clause finally_clause_opt switch_case
-%type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr shift_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr
+%type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr shift_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr function_expr new_expr
 %type <node> expr_no_obj assignment_expr_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
 %type <node> array_literal object_literal prop
 %type <list> stmt_list opt_param_list param_list opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq
@@ -426,6 +427,8 @@ multiplicative_expr
 unary_expr
   : postfix_expr
       { $$ = $1; }
+  | new_expr
+        { $$ = $1; }
   | '+' unary_expr
       { $$ = ast_make_unary("+", $2); }
   | '-' unary_expr %prec UMINUS
@@ -450,7 +453,9 @@ postfix_expr
   : primary_expr
       { $$ = $1; }
   | postfix_expr '.' IDENTIFIER
-      { $$ = ast_make_member($1, $3, false); }
+      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
+  | postfix_expr '[' expr ']'
+      { $$ = ast_make_member($1, $3, true); }
   | postfix_expr '(' opt_arg_list ')'
       { $$ = ast_make_call($1, $3); }
   | postfix_expr PLUS_PLUS
@@ -476,6 +481,8 @@ arg_list
 primary_expr
   : IDENTIFIER
       { $$ = ast_make_identifier($1); }
+  | THIS
+        { $$ = ast_make_this_expr(); }
   | NUMBER
       { $$ = ast_make_number_literal($1); }
   | STRING
@@ -496,6 +503,24 @@ primary_expr
       { $$ = $1; }
   | object_literal
       { $$ = $1; }
+  | '(' function_expr ')'
+      { $$ = $2; }
+  | function_expr
+      { $$ = $1; }
+  ;
+
+function_expr
+  : FUNCTION IDENTIFIER '(' opt_param_list ')' block
+      { $$ = ast_make_function_expr($2, $4, $6); }
+  | FUNCTION '(' opt_param_list ')' block
+      { $$ = ast_make_function_expr(NULL, $3, $5); }
+  ;
+
+new_expr
+  : NEW unary_expr
+      { $$ = ast_make_new_expr($2, NULL); }
+  | NEW unary_expr '(' opt_arg_list ')'
+      { $$ = ast_make_new_expr($2, $4); }
   ;
 
 expr_no_obj
@@ -636,6 +661,8 @@ multiplicative_expr_no_obj
 unary_expr_no_obj
   : postfix_expr_no_obj
       { $$ = $1; }
+  | new_expr
+      { $$ = $1; }
   | '+' unary_expr_no_obj
       { $$ = ast_make_unary("+", $2); }
   | '-' unary_expr_no_obj %prec UMINUS
@@ -660,7 +687,9 @@ postfix_expr_no_obj
   : primary_no_obj
       { $$ = $1; }
   | postfix_expr_no_obj '.' IDENTIFIER
-      { $$ = ast_make_member($1, $3, false); }
+      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
+  | postfix_expr_no_obj '[' expr ']'
+      { $$ = ast_make_member($1, $3, true); }
   | postfix_expr_no_obj '(' opt_arg_list ')'
       { $$ = ast_make_call($1, $3); }
   | postfix_expr_no_obj PLUS_PLUS
@@ -672,6 +701,8 @@ postfix_expr_no_obj
 primary_no_obj
   : IDENTIFIER
       { $$ = ast_make_identifier($1); }
+  | THIS
+        { $$ = ast_make_this_expr(); }
   | NUMBER
       { $$ = ast_make_number_literal($1); }
   | STRING
@@ -690,6 +721,10 @@ primary_no_obj
       { $$ = $2; }
   | array_literal
       { $$ = $1; }
+  | '(' function_expr ')'
+        { $$ = $2; }
+  | function_expr
+        { $$ = $1; }
   ;
 
 array_literal

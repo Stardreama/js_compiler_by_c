@@ -99,6 +99,14 @@ ASTNode *ast_make_function_decl(char *name, ASTList *params, ASTNode *body) {
     return node;
 }
 
+ASTNode *ast_make_function_expr(char *name, ASTList *params, ASTNode *body){
+    ASTNode *node = ast_alloc(AST_FUNCTION_EXPR);
+    node->data.function_expr.name = name;
+    node->data.function_expr.params = params;
+    node->data.function_expr.body = body;
+    return node;
+}
+
 ASTNode *ast_make_return(ASTNode *argument) {
     ASTNode *node = ast_alloc(AST_RETURN_STMT);
     node->data.return_stmt.argument = argument;
@@ -222,6 +230,12 @@ ASTNode *ast_make_identifier(char *name) {
     return node;
 }
 
+ASTNode *ast_make_this_expr(void)
+{
+    ASTNode *node = ast_alloc(AST_THIS);
+    return node;
+}
+
 ASTNode *ast_make_number_literal(char *raw) {
     ASTNode *node = ast_alloc(AST_LITERAL);
     node->data.literal.literal_type = AST_LITERAL_NUMBER;
@@ -315,6 +329,14 @@ ASTNode *ast_make_unary(const char *op, ASTNode *argument) {
     return node;
 }
 
+ASTNode *ast_make_new_expr(ASTNode *callee, ASTList *arguments)
+{
+    ASTNode *node = ast_alloc(AST_NEW_EXPR);
+    node->data.new_expr.callee = callee;
+    node->data.new_expr.arguments = arguments;
+    return node;
+}
+
 ASTNode *ast_make_update(const char *op, ASTNode *argument, bool prefix) {
     ASTNode *node = ast_alloc(AST_UPDATE_EXPR);
     node->data.update.op = op;
@@ -330,7 +352,7 @@ ASTNode *ast_make_call(ASTNode *callee, ASTList *arguments) {
     return node;
 }
 
-ASTNode *ast_make_member(ASTNode *object, char *property, bool computed) {
+ASTNode *ast_make_member(ASTNode *object, ASTNode *property, bool computed) {
     ASTNode *node = ast_alloc(AST_MEMBER_EXPR);
     node->data.member_expr.object = object;
     node->data.member_expr.property = property;
@@ -385,6 +407,9 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             ast_traverse_list(node->data.function_decl.params, visitor, userdata);
             ast_traverse(node->data.function_decl.body, visitor, userdata);
             break;
+        case AST_FUNCTION_EXPR:
+            ast_traverse_list(node->data.function_expr.params, visitor, userdata);
+            ast_traverse(node->data.function_expr.body, visitor, userdata);
         case AST_RETURN_STMT:
             ast_traverse(node->data.return_stmt.argument, visitor, userdata);
             break;
@@ -451,6 +476,10 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
         case AST_UNARY_EXPR:
             ast_traverse(node->data.unary.argument, visitor, userdata);
             break;
+        case AST_NEW_EXPR:
+            ast_traverse(node->data.new_expr.callee, visitor, userdata);
+            ast_traverse_list(node->data.new_expr.arguments, visitor, userdata);
+            break;
         case AST_UPDATE_EXPR:
             ast_traverse(node->data.update.argument, visitor, userdata);
             break;
@@ -460,6 +489,7 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             break;
         case AST_MEMBER_EXPR:
             ast_traverse(node->data.member_expr.object, visitor, userdata);
+            ast_traverse(node->data.member_expr.property, visitor, userdata);
             break;
         case AST_ARRAY_LITERAL:
             ast_traverse_list(node->data.array_literal.elements, visitor, userdata);
@@ -479,6 +509,7 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             break;
         case AST_EMPTY_STMT:
         case AST_IDENTIFIER:
+        case AST_THIS:
         case AST_LITERAL:
             break;
     }
@@ -541,6 +572,19 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             print_indent(indent + 2);
             printf("Body\n");
             ast_print_internal(node->data.function_decl.body, indent + 4);
+            break;
+        case AST_FUNCTION_EXPR:
+            print_indent(indent);
+            printf("FunctionExpression name=%s\n",
+                   node->data.function_expr.name ? node->data.function_expr.name : "<anonymous>");
+            if (node->data.function_expr.params) {
+                print_indent(indent + 2);
+                printf("Params\n");
+                ast_print_list(node->data.function_expr.params, indent + 4);
+            }
+            print_indent(indent + 2);
+            printf("Body\n");
+            ast_print_internal(node->data.function_expr.body, indent + 4);
             break;
         case AST_RETURN_STMT:
             print_indent(indent);
@@ -668,6 +712,10 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             print_indent(indent);
             printf("Identifier name=%s\n", node->data.identifier.name ? node->data.identifier.name : "<unnamed>");
             break;
+        case AST_THIS:
+            print_indent(indent);
+            printf("ThisExpression\n");
+            break;
         case AST_LITERAL:
             print_indent(indent);
             switch (node->data.literal.literal_type) {
@@ -736,6 +784,18 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             printf("UnaryExpression op=%s\n", node->data.unary.op ? node->data.unary.op : "");
             ast_print_internal(node->data.unary.argument, indent + 2);
             break;
+        case AST_NEW_EXPR:
+            print_indent(indent);
+            printf("NewExpression\n");
+            print_indent(indent + 2);
+            printf("Callee\n");
+            ast_print_internal(node->data.new_expr.callee, indent + 4);
+            if (node->data.new_expr.arguments) {
+                print_indent(indent + 2);
+                printf("Arguments\n");
+                ast_print_list(node->data.new_expr.arguments, indent + 4);
+            }
+            break;
         case AST_UPDATE_EXPR:
             print_indent(indent);
             printf("UpdateExpression op=%s %s\n",
@@ -757,11 +817,25 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_MEMBER_EXPR:
             print_indent(indent);
-            printf("MemberExpression property=%s\n",
-                   node->data.member_expr.property ? node->data.member_expr.property : "<computed>");
+            if (node->data.member_expr.computed) {
+                printf("MemberExpression (computed)\n");
+                print_indent(indent + 2);
+                printf("Property (index expression)\n");
+                ast_print_internal(node->data.member_expr.property, indent + 4);
+            } else {
+                printf("MemberExpression (property)\n");
+                print_indent(indent + 2);
+                printf("Property (identifier) ");
+                if (node->data.member_expr.property && node->data.member_expr.property->type == AST_IDENTIFIER) {
+                    printf("name=%s\n", node->data.member_expr.property->data.identifier.name);
+                } else {
+                    printf("<invalid>\n");
+                }
+            }
             print_indent(indent + 2);
             printf("Object\n");
             ast_print_internal(node->data.member_expr.object, indent + 4);
+            break;
             break;
         case AST_ARRAY_LITERAL:
             print_indent(indent);
@@ -834,6 +908,11 @@ void ast_free(ASTNode *node) {
             ast_list_free(node->data.function_decl.params);
             ast_free(node->data.function_decl.body);
             break;
+        case AST_FUNCTION_EXPR:
+            free(node->data.function_expr.name);
+            ast_list_free(node->data.function_expr.params);
+            ast_free(node->data.function_expr.body);
+            break;
         case AST_RETURN_STMT:
             ast_free(node->data.return_stmt.argument);
             break;
@@ -890,6 +969,8 @@ void ast_free(ASTNode *node) {
         case AST_IDENTIFIER:
             free(node->data.identifier.name);
             break;
+        case AST_THIS:
+            break;
         case AST_LITERAL:
             if (node->data.literal.literal_type == AST_LITERAL_STRING
                 || node->data.literal.literal_type == AST_LITERAL_REGEX) {
@@ -915,6 +996,10 @@ void ast_free(ASTNode *node) {
         case AST_UNARY_EXPR:
             ast_free(node->data.unary.argument);
             break;
+        case AST_NEW_EXPR:
+            ast_free(node->data.new_expr.callee);
+            ast_list_free(node->data.new_expr.arguments);
+            break;
         case AST_UPDATE_EXPR:
             ast_free(node->data.update.argument);
             break;
@@ -924,7 +1009,7 @@ void ast_free(ASTNode *node) {
             break;
         case AST_MEMBER_EXPR:
             ast_free(node->data.member_expr.object);
-            free(node->data.member_expr.property);
+            ast_free(node->data.member_expr.property);
             break;
         case AST_ARRAY_LITERAL:
             ast_list_free(node->data.array_literal.elements);

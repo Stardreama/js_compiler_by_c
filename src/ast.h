@@ -10,6 +10,7 @@ typedef enum
     AST_BLOCK,
     AST_VAR_DECL,
     AST_FUNCTION_DECL,
+    AST_FUNCTION_EXPR,
     AST_RETURN_STMT,
     AST_IF_STMT,
     AST_FOR_STMT,
@@ -25,12 +26,14 @@ typedef enum
     AST_EXPR_STMT,
     AST_EMPTY_STMT,
     AST_IDENTIFIER,
+    AST_THIS,
     AST_LITERAL,
     AST_ASSIGN_EXPR,
     AST_BINARY_EXPR,
     AST_CONDITIONAL_EXPR,
     AST_SEQUENCE_EXPR,
     AST_UNARY_EXPR,
+    AST_NEW_EXPR,
     AST_UPDATE_EXPR,
     AST_CALL_EXPR,
     AST_MEMBER_EXPR,
@@ -97,6 +100,12 @@ struct ASTNode
             ASTList *params;
             ASTNode *body;
         } function_decl;
+        struct
+        {
+            char *name;
+            ASTList *params;
+            ASTNode *body;
+        } function_expr;
         struct
         {
             ASTNode *argument;
@@ -167,6 +176,9 @@ struct ASTNode
         } identifier;
         struct
         {
+        } this_expr;
+        struct
+        {
             ASTLiteralType literal_type;
             union
             {
@@ -204,6 +216,11 @@ struct ASTNode
         } unary;
         struct
         {
+            ASTNode *callee;
+            ASTList *arguments;
+        } new_expr;
+        struct
+        {
             const char *op;
             ASTNode *argument;
             bool prefix;
@@ -216,7 +233,7 @@ struct ASTNode
         struct
         {
             ASTNode *object;
-            char *property;
+            ASTNode *property;
             bool computed;
         } member_expr;
         struct
@@ -256,6 +273,7 @@ ASTNode *ast_make_program(ASTList *body);
 ASTNode *ast_make_block(ASTList *body);
 ASTNode *ast_make_var_decl(ASTVarKind kind, char *name, ASTNode *init);
 ASTNode *ast_make_function_decl(char *name, ASTList *params, ASTNode *body);
+ASTNode *ast_make_function_expr(char *name, ASTList *params, ASTNode *body);
 ASTNode *ast_make_return(ASTNode *argument);
 ASTNode *ast_make_if(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
 ASTNode *ast_make_for(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body);
@@ -274,6 +292,7 @@ ASTNode *ast_make_throw(ASTNode *argument);
 ASTNode *ast_make_expression_stmt(ASTNode *expression);
 ASTNode *ast_make_empty_statement(void);
 ASTNode *ast_make_identifier(char *name);
+ASTNode *ast_make_this_expr(void);
 ASTNode *ast_make_number_literal(char *raw);
 ASTNode *ast_make_string_literal(char *raw);
 ASTNode *ast_make_regex_literal(char *raw);
@@ -285,9 +304,10 @@ ASTNode *ast_make_binary(const char *op, ASTNode *left, ASTNode *right);
 ASTNode *ast_make_conditional(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
 ASTNode *ast_make_sequence(ASTNode *left, ASTNode *right);
 ASTNode *ast_make_unary(const char *op, ASTNode *argument);
+ASTNode *ast_make_new_expr(ASTNode *callee, ASTList *arguments);
 ASTNode *ast_make_update(const char *op, ASTNode *argument, bool prefix);
 ASTNode *ast_make_call(ASTNode *callee, ASTList *arguments);
-ASTNode *ast_make_member(ASTNode *object, char *property, bool computed);
+ASTNode *ast_make_member(ASTNode *object, ASTNode *property, bool computed);
 ASTNode *ast_make_array_literal(ASTList *elements);
 ASTNode *ast_make_object_literal(ASTList *properties);
 ASTNode *ast_make_property(char *key, bool is_identifier, ASTNode *value);
