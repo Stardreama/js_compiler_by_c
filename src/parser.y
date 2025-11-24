@@ -36,7 +36,7 @@ static int g_parser_error_count = 0;
 %token SWITCH CASE DEFAULT TRY CATCH FINALLY THROW NEW THIS TYPEOF DELETE IN INSTANCEOF VOID WITH DEBUGGER
 
 %token TRUE FALSE NULL_T UNDEFINED
-%token <str> IDENTIFIER NUMBER STRING
+%token <str> IDENTIFIER NUMBER STRING REGEX
 
 %token PLUS_PLUS MINUS_MINUS
 %token EQ NE EQ_STRICT NE_STRICT
@@ -480,6 +480,8 @@ primary_expr
       { $$ = ast_make_number_literal($1); }
   | STRING
       { $$ = ast_make_string_literal($1); }
+  | REGEX
+      { $$ = ast_make_regex_literal($1); }
   | TRUE
       { $$ = ast_make_boolean_literal(true); }
   | FALSE
@@ -674,6 +676,8 @@ primary_no_obj
       { $$ = ast_make_number_literal($1); }
   | STRING
       { $$ = ast_make_string_literal($1); }
+  | REGEX
+      { $$ = ast_make_regex_literal($1); }
   | TRUE
       { $$ = ast_make_boolean_literal(true); }
   | FALSE

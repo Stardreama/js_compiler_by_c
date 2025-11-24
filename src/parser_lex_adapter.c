@@ -112,6 +112,7 @@ static bool can_end_statement(int token) {
         case IDENTIFIER:
         case NUMBER:
         case STRING:
+        case REGEX:
         case TRUE:
         case FALSE:
         case NULL_T:
@@ -214,6 +215,7 @@ static int convert_token_type(TokenType type) {
         case TOK_UNDEFINED:  return UNDEFINED;
         case TOK_NUMBER:     return NUMBER;
         case TOK_STRING:     return STRING;
+        case TOK_REGEX:      return REGEX;
         case TOK_IDENTIFIER: return IDENTIFIER;
 
         case TOK_PLUS_PLUS:  return PLUS_PLUS;

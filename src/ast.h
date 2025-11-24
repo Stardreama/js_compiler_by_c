@@ -52,6 +52,7 @@ typedef enum
 {
     AST_LITERAL_NUMBER,
     AST_LITERAL_STRING,
+    AST_LITERAL_REGEX,
     AST_LITERAL_BOOLEAN,
     AST_LITERAL_NULL,
     AST_LITERAL_UNDEFINED
@@ -275,6 +276,7 @@ ASTNode *ast_make_empty_statement(void);
 ASTNode *ast_make_identifier(char *name);
 ASTNode *ast_make_number_literal(char *raw);
 ASTNode *ast_make_string_literal(char *raw);
+ASTNode *ast_make_regex_literal(char *raw);
 ASTNode *ast_make_boolean_literal(bool value);
 ASTNode *ast_make_null_literal(void);
 ASTNode *ast_make_undefined_literal(void);

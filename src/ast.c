@@ -241,6 +241,13 @@ ASTNode *ast_make_string_literal(char *raw) {
     return node;
 }
 
+ASTNode *ast_make_regex_literal(char *raw) {
+    ASTNode *node = ast_alloc(AST_LITERAL);
+    node->data.literal.literal_type = AST_LITERAL_REGEX;
+    node->data.literal.value.string = raw;
+    return node;
+}
+
 ASTNode *ast_make_boolean_literal(bool value) {
     ASTNode *node = ast_alloc(AST_LITERAL);
     node->data.literal.literal_type = AST_LITERAL_BOOLEAN;
@@ -670,6 +677,9 @@ static void ast_print_internal(const ASTNode *node, int indent) {
                 case AST_LITERAL_STRING:
                     printf("StringLiteral value=\"%s\"\n", node->data.literal.value.string ? node->data.literal.value.string : "");
                     break;
+                case AST_LITERAL_REGEX:
+                    printf("RegexLiteral value=\"%s\"\n", node->data.literal.value.string ? node->data.literal.value.string : "");
+                    break;
                 case AST_LITERAL_BOOLEAN:
                     printf("BooleanLiteral value=%s\n", node->data.literal.value.boolean ? "true" : "false");
                     break;
@@ -881,7 +891,8 @@ void ast_free(ASTNode *node) {
             free(node->data.identifier.name);
             break;
         case AST_LITERAL:
-            if (node->data.literal.literal_type == AST_LITERAL_STRING) {
+            if (node->data.literal.literal_type == AST_LITERAL_STRING
+                || node->data.literal.literal_type == AST_LITERAL_REGEX) {
                 free(node->data.literal.value.string);
             }
             break;
