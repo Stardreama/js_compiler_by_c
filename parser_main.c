@@ -26,14 +26,19 @@ static char *read_file(const char *filename) {
     fseek(file, 0, SEEK_END);
     long size = ftell(file);
     fseek(file, 0, SEEK_SET);
-    char *content = (char *)malloc(size + 1);
+
+    // 追加换行符确保词法分析正确退出
+    char *content = (char *)malloc(size + 2);
     if (!content) {
         fprintf(stderr, "Error: Memory allocation failed\n");
         fclose(file);
         return NULL;
     }
+
     size_t n = fread(content, 1, size, file);
-    content[n] = '\0';
+    content[n] = '\n';
+    content[n + 1] = '\0';
+
     fclose(file);
     return content;
 }
