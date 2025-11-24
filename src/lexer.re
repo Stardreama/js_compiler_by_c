@@ -90,23 +90,18 @@ Token lexer_next_token(Lexer *lexer) {
         }
         
         // 多行注释
-        "/*" {
-            const char *comment_start = lexer->cursor;
-            while (*lexer->cursor) {
-                if (lexer->cursor[0] == '*' && lexer->cursor[1] == '/') {
-                    lexer->cursor += 2;
-                    break;
+        "/*" ([^*] | "*" [^/])* "*" "/" {
+            while (token_start < lexer->cursor) {
+                    if (*token_start == '\n') {
+                        lexer->line++;
+                        lexer->column = 1;
+                        lexer->has_newline = true;
+                    } else {
+                        lexer->column++;
+                    }
+                    token_start++;
                 }
-                if (*lexer->cursor == '\n') {
-                    lexer->line++;
-                    lexer->column = 1;
-                    lexer->has_newline = true;
-                } else {
-                    lexer->column++;
-                }
-                lexer->cursor++;
-            }
-            continue;
+                continue;
         }
         
         // 关键字
@@ -227,7 +222,11 @@ Token lexer_next_token(Lexer *lexer) {
         }
         
         // 标识符（支持 Unicode）
-        [a-zA-Z_$][a-zA-Z0-9_$]* {
+        U = "\\u" [0-9a-fA-F]{4};
+        ID_START = [A-Za-z$_] | U;
+        ID_CONT  = [A-Za-z0-9$_] | U;
+
+        ID_START ID_CONT* {
             lexer->column += (lexer->cursor - token_start);
             lexer->prev_tok_state = PREV_TOK_CAN_REGEX;
             return make_token(TOK_IDENTIFIER, token_start, lexer->cursor, token_line, token_column);
