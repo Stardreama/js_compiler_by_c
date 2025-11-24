@@ -228,7 +228,7 @@ Token lexer_next_token(Lexer *lexer) {
 
         ID_START ID_CONT* {
             lexer->column += (lexer->cursor - token_start);
-            lexer->prev_tok_state = PREV_TOK_CAN_REGEX;
+            lexer->prev_tok_state = PREV_TOK_NO_REGEX;
             return make_token(TOK_IDENTIFIER, token_start, lexer->cursor, token_line, token_column);
         }
         
