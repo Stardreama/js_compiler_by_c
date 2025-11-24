@@ -273,29 +273,29 @@ Token lexer_next_token(Lexer *lexer) {
         
         // 单字符运算符和分隔符（除除法符号）
         "+" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_PLUS, NULL, NULL, token_line, token_column); }
-        "-" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_MINUS, NULL, NULL, token_line, token_column); }
-        "*" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_STAR, NULL, NULL, token_line, token_column); }
-        "/" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_SLASH, NULL, NULL, token_line, token_column); }
-        "%" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_PERCENT, NULL, NULL, token_line, token_column); }
-        "=" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_ASSIGN, NULL, NULL, token_line, token_column); }
-        "<" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LT, NULL, NULL, token_line, token_column); }
-        ">" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_GT, NULL, NULL, token_line, token_column); }
-        "!" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_NOT, NULL, NULL, token_line, token_column); }
-        "&" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_BIT_AND, NULL, NULL, token_line, token_column); }
-        "|" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_BIT_OR, NULL, NULL, token_line, token_column); }
-        "^" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_BIT_XOR, NULL, NULL, token_line, token_column); }
-        "~" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_BIT_NOT, NULL, NULL, token_line, token_column); }
-        "?" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_QUESTION, NULL, NULL, token_line, token_column); }
-        ":" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_COLON, NULL, NULL, token_line, token_column); }
-        "(" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LPAREN, NULL, NULL, token_line, token_column); }
-        ")" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_RPAREN, NULL, NULL, token_line, token_column); }
-        "{" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LBRACE, NULL, NULL, token_line, token_column); }
-        "}" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_RBRACE, NULL, NULL, token_line, token_column); }
-        "[" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LBRACKET, NULL, NULL, token_line, token_column); }
-        "]" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_RBRACKET, NULL, NULL, token_line, token_column); }
-        ";" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_SEMICOLON, NULL, NULL, token_line, token_column); }
-        "," { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_COMMA, NULL, NULL, token_line, token_column); }
-        "." { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_DOT, NULL, NULL, token_line, token_column); }
+		"-" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_MINUS, NULL, NULL, token_line, token_column); }
+		"*" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_STAR, NULL, NULL, token_line, token_column); }
+		"/" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_SLASH, NULL, NULL, token_line, token_column); }
+		"%" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_PERCENT, NULL, NULL, token_line, token_column); }
+		"=" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_ASSIGN, NULL, NULL, token_line, token_column); }
+		"<" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LT, NULL, NULL, token_line, token_column); }
+		">" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_GT, NULL, NULL, token_line, token_column); }
+		"!" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_NOT, NULL, NULL, token_line, token_column); }
+		"&" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_BIT_AND, NULL, NULL, token_line, token_column); }
+		"|" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_BIT_OR, NULL, NULL, token_line, token_column); }
+		"^" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_BIT_XOR, NULL, NULL, token_line, token_column); }
+		"~" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_BIT_NOT, NULL, NULL, token_line, token_column); }
+		"?" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_QUESTION, NULL, NULL, token_line, token_column); }
+		":" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_COLON, NULL, NULL, token_line, token_column); }
+		"(" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LPAREN, NULL, NULL, token_line, token_column); }
+		")" { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_RPAREN, NULL, NULL, token_line, token_column); }
+		"{" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LBRACE, NULL, NULL, token_line, token_column); }
+		"}" { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_RBRACE, NULL, NULL, token_line, token_column); }
+		"[" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LBRACKET, NULL, NULL, token_line, token_column); }
+		"]" { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_RBRACKET, NULL, NULL, token_line, token_column); }
+		";" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_SEMICOLON, NULL, NULL, token_line, token_column); }
+		"," { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_COMMA, NULL, NULL, token_line, token_column); }
+		"." { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_DOT, NULL, NULL, token_line, token_column); }
         
         // 文件结束
         "\x00" { return make_token(TOK_EOF, NULL, NULL, token_line, token_column); }
