@@ -130,6 +130,14 @@ ASTNode *ast_make_for(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *bo
     return node;
 }
 
+ASTNode *ast_make_for_in(ASTNode *init, ASTNode *obj, ASTNode *body) {
+    ASTNode *node = ast_alloc(AST_FOR_IN_STMT);
+    node->data.for_in_stmt.init = init;
+    node->data.for_in_stmt.obj = obj;
+    node->data.for_in_stmt.body = body;
+    return node;
+}
+
 ASTNode *ast_make_while(ASTNode *test, ASTNode *body) {
     ASTNode *node = ast_alloc(AST_WHILE_STMT);
     node->data.while_stmt.test = test;
@@ -424,6 +432,11 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             ast_traverse(node->data.for_stmt.update, visitor, userdata);
             ast_traverse(node->data.for_stmt.body, visitor, userdata);
             break;
+        case AST_FOR_IN_STMT:
+            ast_traverse(node->data.for_in_stmt.init, visitor, userdata);
+            ast_traverse(node->data.for_in_stmt.obj, visitor, userdata);
+            ast_traverse(node->data.for_in_stmt.body, visitor, userdata);
+            break;
         case AST_WHILE_STMT:
             ast_traverse(node->data.while_stmt.test, visitor, userdata);
             ast_traverse(node->data.while_stmt.body, visitor, userdata);
@@ -621,6 +634,19 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             print_indent(indent + 2);
             printf("Body\n");
             ast_print_internal(node->data.for_stmt.body, indent + 4);
+            break;
+        case AST_FOR_IN_STMT:
+            print_indent(indent);
+            printf("ForStatement\n");
+            print_indent(indent + 2);
+            printf("Init\n");
+            ast_print_internal(node->data.for_in_stmt.init, indent + 4);
+            print_indent(indent + 2);
+            printf("Object\n");
+            ast_print_internal(node->data.for_in_stmt.obj, indent + 4);
+            print_indent(indent + 2);
+            printf("Body\n");
+            ast_print_internal(node->data.for_in_stmt.body, indent + 4);
             break;
         case AST_WHILE_STMT:
             print_indent(indent);
@@ -926,6 +952,11 @@ void ast_free(ASTNode *node) {
             ast_free(node->data.for_stmt.test);
             ast_free(node->data.for_stmt.update);
             ast_free(node->data.for_stmt.body);
+            break;
+        case AST_FOR_IN_STMT:
+            ast_free(node->data.for_in_stmt.init);
+            ast_free(node->data.for_in_stmt.obj);
+            ast_free(node->data.for_in_stmt.body);
             break;
         case AST_WHILE_STMT:
             ast_free(node->data.while_stmt.test);

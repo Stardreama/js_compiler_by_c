@@ -54,7 +54,7 @@ static int g_parser_error_count = 0;
 %left '^'
 %left '&'
 %left EQ NE EQ_STRICT NE_STRICT
-%left '<' '>' LE GE
+%left '<' '>' LE GE INSTANCEOF IN
 %left LSHIFT RSHIFT URSHIFT
 %left '+' '-'
 %left '*' '/' '%'
@@ -62,8 +62,8 @@ static int g_parser_error_count = 0;
 %right UMINUS '!' '~' TYPEOF DELETE VOID PLUS_PLUS MINUS_MINUS
 
 %type <node> program stmt block var_stmt opt_init return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init opt_expr catch_clause finally_clause finally_clause_opt switch_case
-%type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr shift_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr function_expr new_expr
-%type <node> expr_no_obj assignment_expr_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
+%type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr relational_expr_in shift_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr function_expr new_expr
+%type <node> expr_no_obj assignment_expr_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj relational_expr_no_obj_in shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
 %type <node> array_literal object_literal prop
 %type <list> stmt_list opt_param_list param_list opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq
 
@@ -161,6 +161,8 @@ if_stmt
 for_stmt
   : FOR '(' for_init ';' opt_expr ';' opt_expr ')' stmt
       { $$ = ast_make_for($3, $5, $7, $9); }
+  | FOR '(' for_init IN expr ')' stmt
+      { $$ = ast_make_for_in($3, $5, $7); }
   ;
 
 while_stmt
@@ -391,6 +393,17 @@ relational_expr
       { $$ = ast_make_binary("<=", $1, $3); }
   | relational_expr GE shift_expr
       { $$ = ast_make_binary(">=", $1, $3); }
+  | relational_expr INSTANCEOF shift_expr
+      { $$ = ast_make_binary("instanceof", $1, $3); }
+  | relational_expr_in
+      { $$ = $1; }
+  ;
+
+relational_expr_in
+  : shift_expr IN shift_expr
+      { $$ = ast_make_binary("in", $1, $3); }
+  | relational_expr_in IN shift_expr
+      { $$ = ast_make_binary("in", $1, $3); }
   ;
 
 shift_expr
@@ -625,6 +638,17 @@ relational_expr_no_obj
       { $$ = ast_make_binary("<=", $1, $3); }
   | relational_expr_no_obj GE shift_expr_no_obj
       { $$ = ast_make_binary(">=", $1, $3); }
+  | relational_expr_no_obj INSTANCEOF shift_expr_no_obj
+      { $$ = ast_make_binary("instanceof", $1, $3); }
+  | relational_expr_no_obj_in
+      { $$ = $1; }
+  ;
+
+relational_expr_no_obj_in
+  : shift_expr_no_obj IN shift_expr_no_obj
+      { $$ = ast_make_binary("in", $1, $3); }
+  | relational_expr_no_obj_in IN shift_expr_no_obj
+      { $$ = ast_make_binary("in", $1, $3); }
   ;
 
 shift_expr_no_obj

@@ -14,6 +14,7 @@ typedef enum
     AST_RETURN_STMT,
     AST_IF_STMT,
     AST_FOR_STMT,
+    AST_FOR_IN_STMT,
     AST_WHILE_STMT,
     AST_DO_WHILE_STMT,
     AST_SWITCH_STMT,
@@ -123,6 +124,12 @@ struct ASTNode
             ASTNode *update;
             ASTNode *body;
         } for_stmt;
+        struct
+        {
+            ASTNode *init;
+            ASTNode *obj;
+            ASTNode *body;
+        } for_in_stmt;
         struct
         {
             ASTNode *test;
@@ -277,6 +284,7 @@ ASTNode *ast_make_function_expr(char *name, ASTList *params, ASTNode *body);
 ASTNode *ast_make_return(ASTNode *argument);
 ASTNode *ast_make_if(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
 ASTNode *ast_make_for(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body);
+ASTNode *ast_make_for_in(ASTNode *init, ASTNode *obj, ASTNode *body);
 ASTNode *ast_make_while(ASTNode *test, ASTNode *body);
 ASTNode *ast_make_do_while(ASTNode *body, ASTNode *test);
 ASTNode *ast_make_switch(ASTNode *discriminant, ASTList *cases);
