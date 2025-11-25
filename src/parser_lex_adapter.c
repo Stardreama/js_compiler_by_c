@@ -11,12 +11,18 @@ static Lexer g_lexer;
 static int g_initialized = 0;
 static int g_last_token = 0;
 static bool g_last_token_closed_control = false;
+static int g_prev_token = 0;
+static bool g_last_token_closed_function = false;
 
 // 跟踪括号层级及控制语句的条件括号，用于避免在 if(...) 等后面误插入分号
 #define CONTROL_STACK_MAX 64
 static int g_paren_depth = 0;
 static int g_control_stack[CONTROL_STACK_MAX];
 static int g_control_top = 0;
+
+// 用于标记哪些括号层级是属于 function(...) 的头部（和控制语句的控制栈类似）
+static int g_paren_function_stack[CONTROL_STACK_MAX];
+static int g_paren_function_top = 0;
 
 typedef enum {
     BRACE_BLOCK,
@@ -43,16 +49,47 @@ static void pop_control_paren_if_needed(void) {
     }
 }
 
+static void push_function_paren(void) {
+    if (g_paren_function_top < CONTROL_STACK_MAX) {
+        g_paren_function_stack[g_paren_function_top++] = g_paren_depth;
+    }
+}
+
+static void pop_function_paren_if_needed(void) {
+    if (g_paren_function_top > 0 && g_paren_function_stack[g_paren_function_top - 1] == g_paren_depth) {
+        g_paren_function_top--;
+        g_last_token_closed_function = true;
+    }
+}
+
 static void update_token_state(int token) {
     g_last_token_closed_control = false;
+    g_last_token_closed_function = false;
 
     if (token == '(') {
+        // 先增加深度，确保栈中记录的是“括号内”的层级
         g_paren_depth++;
-        if (is_control_keyword(g_last_token)) {
-            push_control_paren();
+
+        // 检查是否为函数头部的括号
+        // 情况A: function foo (...)  -> prev: FUNCTION, last: IDENTIFIER
+        // 情况B: function (...)      -> last: FUNCTION (匿名函数)
+        bool is_named_func = (g_prev_token == FUNCTION && g_last_token == IDENTIFIER);
+        bool is_anon_func  = (g_last_token == FUNCTION);
+
+        if (is_named_func || is_anon_func) {
+            push_function_paren(); // 现在存入的是 increment 后的深度
         }
+
+        // 3. 检查控制语句
+        if (is_control_keyword(g_last_token)) {
+            push_control_paren(); // 存入 increment 后的深度
+        }
+
     } else if (token == ')') {
         if (g_paren_depth > 0) {
+            // 先检查函数栈（如果匹配就设置函数关闭标志）
+            pop_function_paren_if_needed();
+            // 再检查控制语句栈
             pop_control_paren_if_needed();
             g_paren_depth--;
         }
@@ -100,6 +137,7 @@ static void update_token_state(int token) {
         }
     }
 
+    g_prev_token = g_last_token;
     g_last_token = token;
 }
 
@@ -132,7 +170,7 @@ static bool suppress_newline_insertion(int token) {
     return token == '(' || token == '[' || token == '.';
 }
 
-static bool should_insert_semicolon(int last_token, bool last_closed_control, int next_token, bool newline_before, bool is_eof) {
+static bool should_insert_semicolon(int last_token, bool last_closed_control, bool last_token_closed_function, int next_token, bool newline_before, bool is_eof) {
     if (last_token <= 0) {
         return false;
     }
@@ -141,7 +179,7 @@ static bool should_insert_semicolon(int last_token, bool last_closed_control, in
         return false;
     }
 
-    if (last_closed_control) {
+    if (last_closed_control || last_token_closed_function) {
         return false;
     }
 
@@ -341,7 +379,7 @@ int yylex(void) {
 
         token_free(&tk);
 
-        if (should_insert_semicolon(g_last_token, g_last_token_closed_control, mapped, newline_before, is_eof)) {
+        if (should_insert_semicolon(g_last_token, g_last_token_closed_control, g_last_token_closed_function, mapped, newline_before, is_eof)) {
             g_pending.token = mapped;
             g_pending.valid = true;
             g_pending.has_semantic = has_semantic;
