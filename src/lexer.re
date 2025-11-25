@@ -141,22 +141,30 @@ Token lexer_next_token(Lexer *lexer) {
         "undefined"  { lexer->column += 9; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_UNDEFINED, token_start, lexer->cursor, token_line, token_column); }
         
         // 数字字面量（整数、浮点数、科学计数法）（ES5严格模式禁止前导零）
-        // 无小数/指数的十进制（单个0，或1-9开头）
-        ( "0" | [1-9] [0-9]* ) {
+        // 十六进制数字
+        "0" [xX] [0-9a-fA-F]+ {
             lexer->column += (lexer->cursor - token_start);
             lexer->prev_tok_state = PREV_TOK_NO_REGEX;
             return make_token(TOK_NUMBER, token_start, lexer->cursor, token_line, token_column);
         }
 
-        // 带小数/指数的十进制
-        ( ( "0" | [1-9] [0-9]* ) "." [0-9]* | "." [0-9]+ ) ( [eE] [+-]? [0-9]+ )? {
+        // 带指数十进制小数
+        ( ( "0" | [1-9][0-9]* ) "." [0-9]* | "." [0-9]+ )
+        ( [eE] [+-]? [0-9]+ )? {
             lexer->column += (lexer->cursor - token_start);
             lexer->prev_tok_state = PREV_TOK_NO_REGEX;
             return make_token(TOK_NUMBER, token_start, lexer->cursor, token_line, token_column);
         }
-        
-        // 十六进制数字
-        "0" [xX] [0-9a-fA-F]+ {
+
+        // 带指数的整数
+        ( "0" | [1-9][0-9]* ) [eE] [+-]? [0-9]+ {
+            lexer->column += (lexer->cursor - token_start);
+            lexer->prev_tok_state = PREV_TOK_NO_REGEX;
+            return make_token(TOK_NUMBER, token_start, lexer->cursor, token_line, token_column);
+        }
+
+        // 无小数/指数的十进制（单个0，或1-9开头）
+        ( "0" | [1-9] [0-9]* ) {
             lexer->column += (lexer->cursor - token_start);
             lexer->prev_tok_state = PREV_TOK_NO_REGEX;
             return make_token(TOK_NUMBER, token_start, lexer->cursor, token_line, token_column);
