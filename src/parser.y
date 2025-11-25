@@ -6,6 +6,7 @@
 %{
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "ast.h"
 
 int yylex(void);
@@ -65,6 +66,9 @@ static int g_parser_error_count = 0;
 %type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr relational_expr_in shift_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr function_expr new_expr
 %type <node> expr_no_obj assignment_expr_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj relational_expr_no_obj_in shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
 %type <node> array_literal object_literal prop
+
+%type <str> property_name
+
 %type <list> stmt_list opt_param_list param_list opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq
 
 %%
@@ -465,7 +469,7 @@ unary_expr
 postfix_expr
   : primary_expr
       { $$ = $1; }
-  | postfix_expr '.' IDENTIFIER
+  | postfix_expr '.' property_name
       { $$ = ast_make_member($1, ast_make_identifier($3), false); }
   | postfix_expr '[' expr ']'
       { $$ = ast_make_member($1, $3, true); }
@@ -785,10 +789,46 @@ prop_list
   ;
 
 prop
-  : IDENTIFIER ':' assignment_expr
+  : property_name ':' assignment_expr
       { $$ = ast_make_property($1, true, $3); }
-  | STRING ':' assignment_expr
-      { $$ = ast_make_property($1, false, $3); }
+  ;
+
+property_name
+  : IDENTIFIER { $$ = $1; }
+  | STRING     { $$ = $1; }
+  | NUMBER     { $$ = $1; }
+  | DEFAULT    { $$ = strdup("default"); }
+  | IF         { $$ = strdup("if"); }
+  | ELSE       { $$ = strdup("else"); }
+  | FOR        { $$ = strdup("for"); }
+  | WHILE      { $$ = strdup("while"); }
+  | DO         { $$ = strdup("do"); }
+  | FUNCTION   { $$ = strdup("function"); }
+  | VAR        { $$ = strdup("var"); }
+  | LET        { $$ = strdup("let"); }
+  | CONST      { $$ = strdup("const"); }
+  | RETURN     { $$ = strdup("return"); }
+  | BREAK      { $$ = strdup("break"); }
+  | CONTINUE   { $$ = strdup("continue"); }
+  | SWITCH     { $$ = strdup("switch"); }
+  | CASE       { $$ = strdup("case"); }
+  | TRY        { $$ = strdup("try"); }
+  | CATCH      { $$ = strdup("catch"); }
+  | FINALLY    { $$ = strdup("finally"); }
+  | THROW      { $$ = strdup("throw"); }
+  | NEW        { $$ = strdup("new"); }
+  | THIS       { $$ = strdup("this"); }
+  | TYPEOF     { $$ = strdup("typeof"); }
+  | DELETE     { $$ = strdup("delete"); }
+  | IN         { $$ = strdup("in"); }
+  | INSTANCEOF { $$ = strdup("instanceof"); }
+  | VOID       { $$ = strdup("void"); }
+  | WITH       { $$ = strdup("with"); }
+  | DEBUGGER   { $$ = strdup("debugger"); }
+  | TRUE       { $$ = strdup("true"); }
+  | FALSE      { $$ = strdup("false"); }
+  | NULL_T     { $$ = strdup("null"); }
+  | UNDEFINED  { $$ = strdup("undefined"); }
   ;
 
 %%

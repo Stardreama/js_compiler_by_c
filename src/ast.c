@@ -382,8 +382,21 @@ ASTNode *ast_make_object_literal(ASTList *properties) {
 
 ASTNode *ast_make_property(char *key, bool is_identifier, ASTNode *value) {
     ASTNode *node = ast_alloc(AST_PROPERTY);
-    node->data.property.key.name = is_identifier ? key : strip_quotes(key);
-    node->data.property.key.is_identifier = is_identifier;
+    if (is_identifier) {
+        node->data.property.key.name = key;
+        node->data.property.key.is_identifier = true;
+    } else {
+        // 非标识符属性名（STRING 或 NUMBER）：
+        // - STRING 类型：剥离引号（保持原有逻辑）
+        // - NUMBER 类型：直接使用原 key
+        if (key != NULL && (key[0] == '\'' || key[0] == '"')) {
+            node->data.property.key.name = strip_quotes(key);
+        } else {
+            node->data.property.key.name = key;
+        }
+        node->data.property.key.is_identifier = false;
+    }
+
     node->data.property.value = value;
     return node;
 }
@@ -861,7 +874,6 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             print_indent(indent + 2);
             printf("Object\n");
             ast_print_internal(node->data.member_expr.object, indent + 4);
-            break;
             break;
         case AST_ARRAY_LITERAL:
             print_indent(indent);
