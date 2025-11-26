@@ -63,7 +63,7 @@ PARSER_OBJECTS := \
   $(OBJ_DIR)/parser.o \
   $(OBJ_DIR)/ast.o
 
-TEST_FILES := $(wildcard $(TEST_DIR)/*.js) $(wildcard $(TEST_DIR)/**/*.js)
+TEST_FILES := $(wildcard $(TEST_DIR)/*.js) $(wildcard $(TEST_DIR)/**/*)
 
 .PHONY: all parser test clean distclean help toolchain-check debug-vars debug-path FORCE
 
