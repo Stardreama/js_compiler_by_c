@@ -219,7 +219,7 @@ Token lexer_next_token(Lexer *lexer) {
         }
 
         // 正则表达字面量
-        "/"  ([^/\\\r\n] | "\\" (. | "\n"))*  "/" [gimsuy]* {
+        "/" ( [^/\\\r\n[] | "\\" [^\r\n] | "[" ( [^\]\\\r\n] | "\\" [^\r\n] )* "]" )+ "/" [gimsuy]* {
             if (can_start_regex(lexer)) {
                 lexer->column += (lexer->cursor - token_start);
                 lexer->prev_tok_state = PREV_TOK_NO_REGEX;
@@ -302,7 +302,7 @@ Token lexer_next_token(Lexer *lexer) {
 		"[" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LBRACKET, NULL, NULL, token_line, token_column); }
 		"]" { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_RBRACKET, NULL, NULL, token_line, token_column); }
 		";" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_SEMICOLON, NULL, NULL, token_line, token_column); }
-		"," { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_COMMA, NULL, NULL, token_line, token_column); }
+		"," { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_COMMA, NULL, NULL, token_line, token_column); }
 		"." { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_DOT, NULL, NULL, token_line, token_column); }
         
         // 文件结束

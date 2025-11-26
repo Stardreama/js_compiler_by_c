@@ -83,11 +83,17 @@ ASTNode *ast_make_block(ASTList *body) {
     return node;
 }
 
-ASTNode *ast_make_var_decl(ASTVarKind kind, char *name, ASTNode *init) {
+ASTNode *ast_make_var_decl(char *name, ASTNode *init) {
     ASTNode *node = ast_alloc(AST_VAR_DECL);
-    node->data.var_decl.kind = kind;
     node->data.var_decl.name = name;
     node->data.var_decl.init = init;
+    return node;
+}
+
+ASTNode *ast_make_var_stmt(ASTVarKind kind, ASTList *decls) {
+    ASTNode *node = ast_alloc(AST_VAR_STMT);
+    node->data.var_stmt.kind = kind;
+    node->data.var_stmt.decls = decls;
     return node;
 }
 
@@ -424,6 +430,9 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
         case AST_VAR_DECL:
             ast_traverse(node->data.var_decl.init, visitor, userdata);
             break;
+        case AST_VAR_STMT:
+            ast_traverse_list(node->data.var_stmt.decls, visitor, userdata);
+            break;
         case AST_FUNCTION_DECL:
             ast_traverse_list(node->data.function_decl.params, visitor, userdata);
             ast_traverse(node->data.function_decl.body, visitor, userdata);
@@ -581,10 +590,15 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_VAR_DECL:
             print_indent(indent);
-            printf("VariableDeclaration kind=%s name=%s\n",
-                   var_kind_to_string(node->data.var_decl.kind),
+            printf("VariableDeclaration name=%s\n",
                    node->data.var_decl.name ? node->data.var_decl.name : "<anonymous>");
             ast_print_internal(node->data.var_decl.init, indent + 2);
+            break;
+        case AST_VAR_STMT:
+            print_indent(indent);
+            printf("VariableStatement kind=%s\n",
+                var_kind_to_string(node->data.var_stmt.kind));
+            ast_print_list(node->data.var_stmt.decls, indent + 2);
             break;
         case AST_FUNCTION_DECL:
             print_indent(indent);
@@ -940,6 +954,9 @@ void ast_free(ASTNode *node) {
         case AST_VAR_DECL:
             free(node->data.var_decl.name);
             ast_free(node->data.var_decl.init);
+            break;
+        case AST_VAR_STMT:
+            ast_list_free(node->data.var_stmt.decls);
             break;
         case AST_FUNCTION_DECL:
             free(node->data.function_decl.name);

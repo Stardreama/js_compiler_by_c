@@ -9,6 +9,7 @@ typedef enum
     AST_PROGRAM,
     AST_BLOCK,
     AST_VAR_DECL,
+    AST_VAR_STMT,
     AST_FUNCTION_DECL,
     AST_FUNCTION_EXPR,
     AST_RETURN_STMT,
@@ -95,6 +96,10 @@ struct ASTNode
             char *name;
             ASTNode *init;
         } var_decl;
+        struct {
+            ASTVarKind kind;
+            ASTList *decls;
+        } var_stmt;
         struct
         {
             char *name;
@@ -278,7 +283,8 @@ void ast_list_free(ASTList *list);
 
 ASTNode *ast_make_program(ASTList *body);
 ASTNode *ast_make_block(ASTList *body);
-ASTNode *ast_make_var_decl(ASTVarKind kind, char *name, ASTNode *init);
+ASTNode *ast_make_var_decl(char *name, ASTNode *init);
+ASTNode *ast_make_var_stmt(ASTVarKind kind, ASTList *decls);
 ASTNode *ast_make_function_decl(char *name, ASTList *params, ASTNode *body);
 ASTNode *ast_make_function_expr(char *name, ASTList *params, ASTNode *body);
 ASTNode *ast_make_return(ASTNode *argument);

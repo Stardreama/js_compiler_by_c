@@ -155,6 +155,7 @@ static bool can_end_statement(int token) {
         case FALSE:
         case NULL_T:
         case UNDEFINED:
+        case DEFAULT:
         case ')':
         case ']':
         case '}':
@@ -187,6 +188,14 @@ static bool should_insert_semicolon(int last_token, bool last_closed_control, bo
         if (newline_before || is_eof || next_token == '}') {
             return true;
         }
+        return false;
+    }
+
+	if (next_token == CATCH || next_token == FINALLY) {
+        return false;
+    }
+
+    if (last_token == '}' && (next_token == ELSE || next_token == WHILE)) {
         return false;
     }
 
@@ -250,7 +259,7 @@ static int convert_token_type(TokenType type) {
         case TOK_TRUE:       return TRUE;
         case TOK_FALSE:      return FALSE;
         case TOK_NULL:       return NULL_T;
-        case TOK_UNDEFINED:  return UNDEFINED;
+        case TOK_UNDEFINED:  return IDENTIFIER; //UNDEFINED 语法层面可以被看作ID TOKEN，但在语义上与ID不一致，
         case TOK_NUMBER:     return NUMBER;
         case TOK_STRING:     return STRING;
         case TOK_REGEX:      return REGEX;
