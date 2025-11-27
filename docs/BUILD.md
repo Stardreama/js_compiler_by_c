@@ -13,6 +13,13 @@
 - re2c ≥ 3.0 与 Bison ≥ 3.0（通过脚本自动调用）。
 - 可选：MSYS2 或类 Unix 环境以使用 `make`。
 
+## 便携式工具链（Windows）
+
+- 仓库自带的 `bin/` 目录打包了 `gcc`、`re2c`、`bison`、`m4` 等可执行文件，针对未安装 MSYS2 的机器准备。
+- 直接在 PowerShell/CMD 中运行 `.\\make` 会调用 `make.cmd`：脚本会把 `bin/` 写入 `PATH`，并用 MSYS 风格路径填充 `BISON_PKGDATADIR` 与 `M4`，确保 Bison 能找到 `bin/share/bison/m4sugar/m4sugar.m4`。
+- 由于生成物会被缓存，跨设备测试前建议执行 `.\\make clean`，再运行 `.\\make` 或 `.\\make parser`/`test` 等目标以避免旧的 `build/generated` 干扰。
+- 如果仍需进入 MSYS2/mingw64 终端，可继续使用系统 `make`；脚本只是在纯 Windows Shell 下提供一键式环境。
+
 ## Windows 构建流程（build.bat）
 
 ```bash

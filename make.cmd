@@ -24,7 +24,8 @@ rem Prepend BOTH formats to PATH.
 set "PATH=%MINGW_BIN_CYG%;%MSYS_USER_BIN_CYG%;%MINGW_BIN_WIN%;%MSYS_USER_BIN_WIN%;%PATH%"
 
 rem Set BISON_PKGDATADIR so bison can find its data files (m4sugar.m4 etc)
-set "BISON_PKGDATADIR=%ROOT_DIR_FWD%bin/share/bison"
+set "BISON_PKGDATADIR=%MSYS_ROOT%bin/share/bison"
+set "M4=%MSYS_USER_BIN_CYG%/m4.exe"
 
 rem echo Debug: PATH is %PATH%
 rem "%MSYS_USER_BIN_WIN%\sh.exe" -c "echo Sh PATH is $PATH"
