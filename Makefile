@@ -57,13 +57,11 @@ LEXER_OBJECTS := \
   $(OBJ_DIR)/lexer.o
 
 PARSER_OBJECTS := \
-  $(OBJ_DIR)/parser_main.o \
-  $(OBJ_DIR)/parser_lex_adapter.o \
-  $(OBJ_DIR)/lexer.o \
-  $(OBJ_DIR)/parser.o \
-  $(OBJ_DIR)/ast.o
-
-TEST_FILES := $(wildcard $(TEST_DIR)/*.js) $(wildcard $(TEST_DIR)/**/*)
+	$(OBJ_DIR)/parser_main.o \
+	$(OBJ_DIR)/parser_lex_adapter.o \
+	$(OBJ_DIR)/lexer.o \
+	$(OBJ_DIR)/parser.o \
+	$(OBJ_DIR)/ast.o
 
 .PHONY: all parser test clean distclean help toolchain-check debug-vars debug-path FORCE
 
@@ -129,21 +127,22 @@ $(OBJ_DIR):
 	@$(MKDIR) -p $@
 
 test: $(PARSER_TARGET)
-	@if [ -z "$(TEST_FILES)" ]; then \
+	@files=$$(find $(TEST_DIR) -type f); \
+	if [ -z "$$files" ]; then \
 		echo "No test files found under $(TEST_DIR)/"; \
 		exit 1; \
-	fi
-	@echo ""
-	@echo "================================================"
-	@echo "Running All Tests in $(TEST_DIR)/"
-	@echo "================================================"
-	@echo ""
-	@total=0; passed=0; failed=0; \
-	for f in $(TEST_FILES); do \
+	fi; \
+	echo ""; \
+	echo "================================================"; \
+	echo "Running All Tests in $(TEST_DIR)/"; \
+	echo "================================================"; \
+	echo ""; \
+	total=0; passed=0; failed=0; \
+	for f in $$files; do \
 		total=$$((total + 1)); \
 		echo "Running parser test: $$f"; \
-		if echo "$$f" | grep "error" > /dev/null; then \
-			if ./$(PARSER_TARGET) $$f; then \
+		if echo "$$f" | grep -E "(test_error|temp)" > /dev/null; then \
+			if ./$(PARSER_TARGET) "$$f"; then \
 				echo "  [result] FAIL (Expected error, but parsed successfully)"; \
 				failed=$$((failed + 1)); \
 			else \
@@ -151,7 +150,7 @@ test: $(PARSER_TARGET)
 				passed=$$((passed + 1)); \
 			fi; \
 		else \
-			if ./$(PARSER_TARGET) $$f; then \
+			if ./$(PARSER_TARGET) "$$f"; then \
 				echo "  [result] PASS"; \
 				passed=$$((passed + 1)); \
 			else \
@@ -176,20 +175,54 @@ test: $(PARSER_TARGET)
 		echo "TEST SUITE PASSED - All $$passed test(s) passed"; \
 	fi
 
-# Allow running a specific test file, e.g. make test/test_simple.js
-$(TEST_DIR)/%.js: $(PARSER_TARGET) FORCE
-	@echo "Running parser test: $@"
-	@if echo "$@" | grep "error" > /dev/null; then \
-		if ./$(PARSER_TARGET) $@; then \
-			echo "  [result] FAIL (Expected error, but parsed successfully)"; \
-		else \
-			echo "  [result] PASS (Expected error caught)"; \
+# Allow running a specific test file or directory, e.g. make test/test_simple.js or make test/JavaScript_Datasets/badjs
+$(TEST_DIR)/%: $(PARSER_TARGET) FORCE
+	@if [ -d "$@" ]; then \
+		files=$$(find "$@" -type f); \
+		if [ -z "$$files" ]; then \
+			echo "No test files found under $@"; \
+			exit 0; \
+		fi; \
+		total=0; passed=0; failed=0; \
+		for f in $$files; do \
+			total=$$((total + 1)); \
+			echo "Running parser test: $$f"; \
+			if echo "$$f" | grep -E "(test_error|temp)" > /dev/null; then \
+				if ./$(PARSER_TARGET) "$$f"; then \
+					echo "  [result] FAIL (Expected error, but parsed successfully)"; \
+					failed=$$((failed + 1)); \
+				else \
+					echo "  [result] PASS (Expected error caught)"; \
+					passed=$$((passed + 1)); \
+				fi; \
+			else \
+				if ./$(PARSER_TARGET) "$$f"; then \
+					echo "  [result] PASS"; \
+					passed=$$((passed + 1)); \
+				else \
+					echo "  [result] FAIL"; \
+					failed=$$((failed + 1)); \
+				fi; \
+			fi; \
+		done; \
+		echo "-- $@ summary: total=$$total passed=$$passed failed=$$failed --"; \
+		if [ $$failed -gt 0 ]; then \
+			exit 1; \
 		fi; \
 	else \
-		if ./$(PARSER_TARGET) $@; then \
-			echo "  [result] PASS"; \
+		echo "Running parser test: $@"; \
+		if echo "$@" | grep -E "(test_error|temp)" > /dev/null; then \
+			if ./$(PARSER_TARGET) "$@"; then \
+				echo "  [result] FAIL (Expected error, but parsed successfully)"; \
+			else \
+				echo "  [result] PASS (Expected error caught)"; \
+			fi; \
 		else \
-			echo "  [result] FAIL"; \
+			if ./$(PARSER_TARGET) "$@"; then \
+				echo "  [result] PASS"; \
+			else \
+				echo "  [result] FAIL"; \
+			fi; \
 		fi; \
 	fi
 
