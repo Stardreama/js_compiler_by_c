@@ -75,3 +75,6 @@ SETUP.md
 *.dll
 *.so
 *.dylib
+
+test/JavaScript_Datasets/
+vb_examples/
