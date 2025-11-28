@@ -167,8 +167,12 @@ define RUN_TESTS_BODY
 		status=$$?; \
 		if [ $$is_expected_error -eq 1 ]; then \
 			if [ $$status -ne 0 ]; then \
-				printf "$${GREEN}PASS$${NC} (Caught)\n"; \
+				printf "$${GREEN}PASS$${NC} ($${RED}Caught$${NC})\n"; \
 				passed=$$((passed + 1)); \
+				first_line=$$(printf "%s\n" "$$output" | sed -n '1p'); \
+				if [ -n "$$first_line" ]; then \
+					printf "    %s\n" "$$first_line"; \
+				fi; \
 			else \
 				printf "$${RED}FAIL$${NC} (Unexpected Success)\n"; \
 				failed=$$((failed + 1)); \
