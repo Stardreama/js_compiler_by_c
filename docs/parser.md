@@ -161,8 +161,9 @@ cd d:\EduLibrary\OurEDA\js_compiler_by_c
   - 函数/箭头形参：`function f({ x, y = 1 }, [head, ...tail]) {}`、`({ value }) => value`。
   - `catch` 绑定：`catch ({ message, info: { code = 0 } }) {}`。
   - `for-in` 头部：`for (const { key } in source) { ... }`、`for (let [entry] in dict) { ... }`。
+- **赋值表达式**：`assignment_expr` / `assignment_expr_no_obj` 现在通过 `assignment_target( _no_obj )` 自动识别对象/数组左值，并在构造 AST 时将其包裹成 `AST_BINDING_PATTERN`，因此 `({ foo: target.name, bar = 2 } = payload)`、`[items.first, items.second = 10] = source`、`[first, ...rest] = payload` 这类语句可以直接作为表达式使用。
 - **词法/ASI 调整**：词法器提供 `TOK_ELLIPSIS`，适配层在 `...`、`{`、`}` 场景下维护 brace stack，避免在解构上下文中误插分号。
-- **测试套件**：`make test test/es6_stage1` 会运行四个正向用例与一个 `test_error_destructuring_assign.js` 负例，必要时可使用 `build/parser_error_locations.log` 查看失败定位。
+- **测试套件**：`make test test/es6_stage1` 当前运行 `catch_binding.js`、`destructuring_for_in.js`、`destructuring_params.js`、`destructuring_var.js` 以及新增的 `destructuring_assign.js`，即可覆盖声明、循环、函数参数与赋值四类场景；必要时可使用 `build/parser_error_locations.log` 查看失败定位。
 - **已知限制**：解构赋值表达式（`({a} = expr)`、`[a] = expr`）仍未实现；对应文件目前保持 `test_error_*` 命名以提醒该语法尚未开放。
 
 ## 10. Arrow Function 与参数系统更新（2025-12 更新）

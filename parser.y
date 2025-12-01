@@ -1058,23 +1058,23 @@ binding_rest_element
       { $$ = ast_make_rest_element(ast_make_identifier($2)); }
   ;
 
-assignment_pattern
-  : object_assignment_pattern
-      { $$ = ast_make_binding_pattern($1, NULL); }
-  | array_assignment_pattern
-      { $$ = ast_make_binding_pattern($1, NULL); }
-  ;
-
-object_assignment_pattern
-  : '{' '}'
-      { $$ = ast_make_object_binding(NULL); }
-  | '{' assignment_property_sequence '}'
-      { $$ = ast_make_object_binding($2); }
-  ;
-
-assignment_property_sequence
-  : assignment_property_list opt_trailing_comma
+assignment_target
+  : postfix_expr %dprec 1
       { $$ = $1; }
+  | object_assignment_pattern %dprec 2
+      { $$ = $1; }
+  | array_assignment_pattern %dprec 2
+      { $$ = $1; }
+  ;
+
+assignment_target_no_obj
+  : postfix_expr_no_obj %dprec 1
+      { $$ = $1; }
+  | object_assignment_pattern %dprec 2
+      { $$ = $1; }
+  | array_assignment_pattern %dprec 2
+      { $$ = $1; }
+  ;
   | assignment_property_list ',' assignment_rest_element
       { $$ = ast_list_append($1, $3); }
   | assignment_rest_element

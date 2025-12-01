@@ -38,6 +38,16 @@ static ASTNode *build_template_concatenation(ASTList *parts) {
     }
     return result;
 }
+
+static ASTNode *wrap_destructuring_target(ASTNode *target) {
+    if (!target) {
+        return NULL;
+    }
+    if (target->type == AST_OBJECT_BINDING || target->type == AST_ARRAY_BINDING) {
+        return ast_make_binding_pattern(target, NULL);
+    }
+    return target;
+}
 %}
 
 %code provides {
@@ -96,7 +106,7 @@ static ASTNode *build_template_concatenation(ASTList *parts) {
 %type <node> program stmt block var_stmt return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init for_in_left opt_expr catch_clause finally_clause finally_clause_opt switch_case var_decl
 %type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr relational_expr_in shift_expr additive_expr multiplicative_expr unary_expr postfix_expr left_hand_side_expr call_expr member_expr primary_expr function_expr template_literal
 %type <node> expr_no_obj assignment_expr_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj relational_expr_no_obj_in shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj left_hand_side_expr_no_obj call_expr_no_obj member_expr_no_obj primary_no_obj
-%type <node> binding_element binding_initializer_opt object_binding array_binding binding_property binding_rest_property binding_rest_element assignment_pattern object_assignment_pattern array_assignment_pattern assignment_property assignment_element assignment_rest_element assignment_target for_binding for_binding_declarator catch_parameter rest_param
+%type <node> binding_element binding_initializer_opt object_binding array_binding binding_property binding_rest_property binding_rest_element assignment_pattern object_assignment_pattern array_assignment_pattern assignment_property assignment_element assignment_rest_element assignment_target assignment_target_no_obj for_binding for_binding_declarator catch_parameter rest_param
 %type <node> arrow_function
 %type <arrow> arrow_body
 %type <node> array_literal object_literal prop
@@ -376,8 +386,8 @@ expr
   ;
 
 assignment_expr
-    : postfix_expr '=' assignment_expr
-      { $$ = ast_make_assignment("=", $1, $3); }
+        : assignment_target '=' assignment_expr
+            { $$ = ast_make_assignment("=", wrap_destructuring_target($1), $3); }
   | postfix_expr PLUS_ASSIGN assignment_expr
       { $$ = ast_make_assignment("+=", $1, $3); }
   | postfix_expr MINUS_ASSIGN assignment_expr
@@ -640,8 +650,8 @@ expr_no_obj
     ;
 
 assignment_expr_no_obj
-    : postfix_expr_no_obj '=' assignment_expr
-      { $$ = ast_make_assignment("=", $1, $3); }
+        : assignment_target_no_obj '=' assignment_expr
+            { $$ = ast_make_assignment("=", wrap_destructuring_target($1), $3); }
   | postfix_expr_no_obj PLUS_ASSIGN assignment_expr
       { $$ = ast_make_assignment("+=", $1, $3); }
   | postfix_expr_no_obj MINUS_ASSIGN assignment_expr
@@ -1169,11 +1179,20 @@ assignment_element
   ;
 
 assignment_target
-  : postfix_expr
+  : postfix_expr %dprec 1
       { $$ = $1; }
-  | object_assignment_pattern
+  | object_assignment_pattern %dprec 2
       { $$ = $1; }
-  | array_assignment_pattern
+  | array_assignment_pattern %dprec 2
+      { $$ = $1; }
+  ;
+
+assignment_target_no_obj
+  : postfix_expr_no_obj %dprec 1
+      { $$ = $1; }
+  | object_assignment_pattern %dprec 2
+      { $$ = $1; }
+  | array_assignment_pattern %dprec 2
       { $$ = $1; }
   ;
 

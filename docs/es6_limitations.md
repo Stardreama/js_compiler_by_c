@@ -10,10 +10,10 @@ Syntax error #1: syntax error, unexpected ';', expecting ':'
 
 该文件是由构建工具压缩后的现代 JavaScript，需要完整的 ES2015+ 语法支持。我们逐段排查后确认：
 
-1. **Binding Pattern（部分支持）**
+1. **Binding Pattern（已覆盖声明 + 赋值）**
 
-   - ✅ 变量声明（`var/let/const`）、函数形参（含箭头函数）、`catch`、`for-in` 头部现已支持对象 / 数组解构、默认值与 `...rest`。
-   - ⚠️ 赋值表达式（`({a} = expr)`、`[a] = expr`）仍未实现，相关文件需继续命名为 `test_error_*` 以标记期望失败。
+   - ✅ 变量声明（`var/let/const`）、函数/箭头形参、`catch`、`for-in` 头部以及普通赋值表达式现已支持对象 / 数组解构、默认值与 `...rest`。`test/es6_stage1/destructuring_assign.js`、`destructuring_var.js` 等覆盖常见组合，`[items.first, items.second = 10] = tuple`、`({ foo: target.name, bar = 2 } = payload)` 等写法均可通过。
+   - ⚠️ 仍未实现 `for-of`/`yield` 等迭代语法中的赋值拆解；`new.target`、`import()` 等 ES2015+ 扩展也暂未加入。
 
 2. **模板字符串**
 

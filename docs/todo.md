@@ -74,12 +74,11 @@
 
 - [x] `var_decl`、函数/箭头形参、`catch_clause`、`for_in_left` 接入 `binding_element`。
 - [x] `lexer.re`/`parser_lex_adapter.c` 支持 `...` 并维护 brace stack，避免 ASI 误触发。
-- [ ] `assignment_expr` 的解构赋值；当前仍依赖 `test_error_destructuring_assign.js` 追踪缺口。
+- [x] `assignment_expr` 的解构赋值：`assignment_target( _no_obj )` 现在会在遇到对象/数组左值时自动转换为 `AST_BINDING_PATTERN`，`test/es6_stage1/destructuring_assign.js` 负责覆盖 `( { foo: target.name, bar = 2 } = payload )`、`[first, ...rest] = array` 等场景。
 
 3. **测试/回归**
 
-- [x] `test/es6_stage1/{destructuring_var,destructuring_params,catch_binding,destructuring_for_in}.js` 作为正向用例。
-- [x] 将赋值用例迁入 `test_error_destructuring_assign.js`，在 `make test test/es6_stage1` 中标记“预期失败”。
+- [x] `test/es6_stage1/{destructuring_var,destructuring_params,catch_binding,destructuring_for_in,destructuring_assign}.js` 作为正向用例。
 - [ ] 补充 `goodjs` 抽样与更复杂的嵌套 for-in/of 场景。
 
 ---
@@ -109,11 +108,11 @@
 - [x] `test/es6_stage2/arrow_functions.js`：覆盖单参数省略括号、解构参数、默认值、rest、嵌套箭头。
 - [x] 负例：`(a\n)=>{}` 应报错以符合规范。
 
-> ✅ **进展更新（2025-12-01）**：通过 `ARROW_HEAD` 预读与 `binding_element` 统一形参与 AST 结构，`test/es6_stage1/destructuring_params.js`、`test/es6_stage2/arrow_functions.js` 全部通过；`test/es6_stage2/test_error_arrow_newline.js` 持续作为 LineTerminator 负例。移除了历史上的 `({ value = 0, ...rest }) => expr` 歧义，并新增对象字面量简写属性支持，使 `({ value, rest }) => ({ value, rest })` 等写法在 GLR 模式下稳定归约。
+> ✅ **进展更新（2025-12-01）**：通过 `ARROW_HEAD` 预读与 `binding_element` 统一形参与 AST 结构，`test/es6_stage1/destructuring_params.js`、`test/es6_stage1/destructuring_assign.js`、`test/es6_stage2/arrow_functions.js` 全部通过；`test/es6_stage2/test_error_arrow_newline.js` 继续验证 LineTerminator 受限规则。对象字面量简写属性、`({ value, rest }) => ...` 等 cover 语法在 GLR 模式下稳定归约。
 
-> 🔧 **新增粒度控制**：`parser.y` 现采用 `member_expr/call_expr/left_hand_side_expr` 三段式建模 `new`，成功解析 `new Image().src = ...`、`new Foo(bar).baz()` 等调用链；`test/JavaScript_Datasets/goodjs/eb8511178bbe1d5132aa2504c710c666` 不再报 “syntax is ambiguous”。
+> 🔧 **新增粒度控制**：`parser.y` 现采用 `member_expr/call_expr/left_hand_side_expr` 三段式建模 `new`，成功解析 `new Image().src = ...`、`new Foo(bar).baz()` 等调用链；`assignment_target( _no_obj )` 则在直观的 `=` 左值上套用了相同的 cover 逻辑。
 
-> 📌 **未完事项**：保留 `test/es6_stage1/test_error_destructuring_assign.js` 作为 M1 的待办（赋值场景仍未解锁），同时保持 `docs/es6_limitations.md` 关于 `new.target`/`import()` 的限制说明。后续若引入 `for-of`、`yield` 等语法，需要复用同一套 `binding_element` / `left_hand_side_expr` 基础设施。
+> 📌 **未完事项**：后续扩展（例如 `for-of`、`yield`、`spread`、`new.target`、`import()`）仍待 M5+/M6 处理；`goodjs` 样例中的剩余失败需要在完成模板字符串、类、模块等特性后再清理。
 
 ---
 
