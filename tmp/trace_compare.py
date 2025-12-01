@@ -6,9 +6,11 @@ from collections import Counter
 def analyze(path):
     current_token = None
     splits = Counter()
+    split_rules = Counter()
     max_stack = 0
     stack_alive = set([0])
     max_alive = 1
+    last_rule_for_stack = {}
     for line in open(path, "r", encoding="utf-8", errors="ignore"):
         line = line.strip()
         if line.startswith("Next token is token"):
@@ -18,15 +20,21 @@ def analyze(path):
             else:
                 current_token = None
         elif "Splitting off stack" in line:
-            m = re.search(r"Splitting off stack (\d+)", line)
+            m = re.search(r"Splitting off stack (\d+) from (\d+)", line)
             if m:
                 new_id = int(m.group(1))
+                parent_id = int(m.group(2))
                 max_stack = max(max_stack, new_id)
+                parent_rule = last_rule_for_stack.get(parent_id)
+                if parent_rule:
+                    split_rules[parent_rule] += 1
+            else:
+                new_id = None
             if current_token:
                 splits[current_token] += 1
-            # track alive stack count crudely
-            stack_alive.add(new_id)
-            max_alive = max(max_alive, len(stack_alive))
+            if new_id is not None:
+                stack_alive.add(new_id)
+                max_alive = max(max_alive, len(stack_alive))
         elif "Stack " in line and "dies" in line:
             m = re.search(r"Stack (\d+)", line)
             if m:
@@ -45,7 +53,14 @@ def analyze(path):
             stack_alive.clear()
         elif line.startswith("[PASS]") or line.startswith("[FAIL]"):
             stack_alive.clear()
-    return splits, max_stack, max_alive
+        elif line.startswith("Reduced stack"):
+            m = re.search(r"Reduced stack (\d+) by rule (\d+) \(line (\d+)\)", line)
+            if m:
+                stack_id = int(m.group(1))
+                rule_no = int(m.group(2))
+                line_no = int(m.group(3))
+                last_rule_for_stack[stack_id] = (rule_no, line_no)
+    return splits, split_rules, max_stack, max_alive
 
 
 def main():
@@ -53,12 +68,16 @@ def main():
         print("Usage: trace_compare.py <traceA> <traceB>")
         return
     for path in sys.argv[1:]:
-        splits, max_stack, max_alive = analyze(path)
+        splits, split_rules, max_stack, max_alive = analyze(path)
         print(f"=== {path} ===")
         print(f"Max stack id: {max_stack}")
         print(f"Peak concurrent stacks (approx): {max_alive}")
         for token, count in splits.most_common(10):
             print(f"{token}: {count}")
+        if split_rules:
+            print("Top split rules (rule#line):")
+            for (rule_no, line_no), count in split_rules.most_common(5):
+                print(f"  rule {rule_no} @ line {line_no}: {count}")
 
 
 if __name__ == "__main__":

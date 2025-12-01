@@ -15,6 +15,10 @@
 int yylex(void);
 void yyerror(const char *s);
 
+#ifndef YYMAXDEPTH
+#define YYMAXDEPTH 200000
+#endif
+
 static ASTNode *g_parser_ast_root = NULL;
 static int g_parser_error_count = 0;
 static bool g_parser_module_mode = true;
@@ -302,7 +306,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %type <node> program module_item stmt block var_stmt var_stmt_no_in return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init for_in_left opt_expr catch_clause finally_clause finally_clause_opt switch_case var_decl var_decl_no_in class_decl class_expr class_element method_definition getter_definition setter_definition computed_property class_heritage_opt import_stmt export_stmt import_default_binding namespace_import import_specifier module_specifier export_specifier
 %type <node> expr assignment_expr assignment_expr_no_pattern conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr shift_expr additive_expr multiplicative_expr unary_expr postfix_expr postfix_expr_no_arr left_hand_side_expr left_hand_side_expr_no_arr call_expr call_expr_no_arr member_expr member_expr_no_arr new_expr new_expr_no_arr primary_expr primary_no_arr function_expr template_literal
 %type <node> assignment_expr_no_pattern_no_in conditional_expr_no_in logical_or_expr_no_in logical_and_expr_no_in bitwise_or_expr_no_in bitwise_xor_expr_no_in bitwise_and_expr_no_in equality_expr_no_in relational_expr_no_in
-%type <node> expr_no_obj assignment_expr_no_obj assignment_expr_no_pattern_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj postfix_expr_no_obj_no_arr left_hand_side_expr_no_obj left_hand_side_expr_no_obj_no_arr call_expr_no_obj call_expr_no_obj_no_arr member_expr_no_obj member_expr_no_obj_no_arr new_expr_no_obj new_expr_no_obj_no_arr primary_no_obj primary_no_obj_no_arr
+%type <node> expr_no_obj assignment_expr_no_obj assignment_expr_no_pattern_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj postfix_expr_no_obj_no_arr left_hand_side_expr_no_obj left_hand_side_expr_no_obj_no_arr member_expr_no_obj member_expr_no_obj_no_arr new_expr_no_obj new_expr_no_obj_no_arr primary_no_obj primary_no_obj_no_arr
 %type <node> expr_no_in_no_obj assignment_expr_no_in_no_obj assignment_expr_no_pattern_no_in_no_obj conditional_expr_no_obj_no_in logical_or_expr_no_obj_no_in logical_and_expr_no_obj_no_in bitwise_or_expr_no_obj_no_in bitwise_xor_expr_no_obj_no_in bitwise_and_expr_no_obj_no_in equality_expr_no_obj_no_in relational_expr_no_obj_no_in
 %type <node> yield_expr spread_element el_item arg_item
 %type <node> binding_element binding_initializer_opt binding_initializer_opt_no_in object_binding array_binding binding_property binding_rest_property binding_rest_element assignment_pattern object_assignment_pattern array_assignment_pattern assignment_property assignment_element assignment_rest_element assignment_target destructuring_assignment_target destructuring_assignment_target_no_obj for_binding for_binding_declarator catch_parameter rest_param
@@ -1651,18 +1655,14 @@ postfix_expr_no_obj_no_arr
   ;
 
 left_hand_side_expr_no_obj
-  : call_expr_no_obj
-      { $$ = $1; }
-  | new_expr_no_obj
-      { $$ = $1; }
-  ;
+    : new_expr_no_obj
+            { $$ = $1; }
+    ;
 
 left_hand_side_expr_no_obj_no_arr
-  : call_expr_no_obj_no_arr
-      { $$ = $1; }
-  | new_expr_no_obj_no_arr
-      { $$ = $1; }
-  ;
+    : new_expr_no_obj_no_arr
+            { $$ = $1; }
+    ;
 
 member_expr_no_obj
   : primary_no_obj
@@ -1671,6 +1671,8 @@ member_expr_no_obj
       { $$ = ast_make_member($1, ast_make_identifier($3), false); }
   | member_expr_no_obj '[' expr ']'
       { $$ = ast_make_member($1, $3, true); }
+  | member_expr_no_obj '(' opt_arg_list ')'
+      { $$ = ast_make_call($1, $3); }
   | member_expr_no_obj template_literal
       { $$ = ast_make_tagged_template($1, $2); }
   | NEW member_expr_no_obj '(' opt_arg_list ')'
@@ -1684,6 +1686,8 @@ member_expr_no_obj_no_arr
       { $$ = ast_make_member($1, ast_make_identifier($3), false); }
   | member_expr_no_obj_no_arr '[' expr ']'
       { $$ = ast_make_member($1, $3, true); }
+  | member_expr_no_obj_no_arr '(' opt_arg_list ')'
+      { $$ = ast_make_call($1, $3); }
   | member_expr_no_obj_no_arr template_literal
       { $$ = ast_make_tagged_template($1, $2); }
   | NEW member_expr_no_obj_no_arr '(' opt_arg_list ')'
@@ -1702,32 +1706,6 @@ new_expr_no_obj_no_arr
       { $$ = $1; }
   | NEW new_expr_no_obj_no_arr
       { $$ = ast_make_new_expr($2, NULL); }
-  ;
-
-call_expr_no_obj
-  : member_expr_no_obj '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | call_expr_no_obj '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | call_expr_no_obj '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | call_expr_no_obj '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | call_expr_no_obj template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
-  ;
-
-call_expr_no_obj_no_arr
-  : member_expr_no_obj_no_arr '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | call_expr_no_obj_no_arr '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | call_expr_no_obj_no_arr '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | call_expr_no_obj_no_arr '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | call_expr_no_obj_no_arr template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
   ;
 
 primary_no_obj

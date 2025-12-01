@@ -40,3 +40,18 @@ This document summarizes all work done so far to diagnose and fix the GLR "memor
 - Prototype a shared suffix helper, e.g. `postfix_suffix -> ('.' IDENT | '[' expr ']' | template_literal)*`, used by both member/call chains, so we can drop duplicated `_no_arr` variants without creating new GLR derivations.
 - Alternatively, separate assignment targets from expression contexts to avoid `_no_obj` duplications entirely, potentially reducing the stack fan-out observed around `this.` chains.
 - Once a promising refactor is in place, rerun the `trace_compare` tool to see if `'.'` splits drop below current counts (≈72) before re-running the full ES6 suite.
+
+## 6. Latest Diagnostics (May 2025)
+
+- Regenerated traces for `tmp/repro_mem10.js` (fail) and `tmp/repro_mem16.js` (pass) with the current grammar; peak stack counts were 15 vs. 7 respectively, confirming the explosion remains localized to the failing file.
+- Upgraded `tmp/trace_compare.py` to attribute stack splits to grammar rules/line numbers. Failing logs show 76 splits on `.` with rule 443 (`primary_no_obj_no_arr` at line 1743) responsible for 52 of them; passing logs split only 12 times with the same rule contributing 5.
+- Rule-level deltas implicate the `_no_obj_no_arr` base case rather than the suffix productions. Branching occurs before the parser decides whether `this`/identifier tokens should become `member_expr` or `call_expr`, so any fix must start there.
+- Immediate plan: investigate whether `_no_obj_no_arr` can reuse a single "base expression" nonterminal with context flags (or precedence tweaks) to avoid duplicating `primary` forms across `member_expr`/`call_expr`. This should reduce the number of viable stacks before suffix parsing even begins.
+
+## 7. Stack Capacity Fix (Dec 2025)
+
+- Bison's GLR backend defaults `YYMAXDEPTH` to 10,000 stack items, which proved insufficient even though the failing trace never exceeded 16 concurrent stacks; the repeated member-access reductions simply churned through far more than 10k GLR items before commitments occurred.
+- Added an override in `src/parser.y` (inside the `%{ … %}` prologue) to `#define YYMAXDEPTH 200000` before Bison's headers are emitted, then rebuilt via `make parser` so `build/generated/parser.c` picks up the new value.
+- Reran `js_parser.exe tmp\repro_mem10.js` and `tmp\repro_mem16.js` (both with and without `JS_PARSER_TRACE=1`). The former now reports `[PASS]` and the trace log no longer contains "memory exhausted"—peak stack id remains 15, but the run finishes cleanly because the GLR stack can continue expanding.
+- Validated via `python tmp/trace_compare.py tmp/trace_mem10.log tmp/trace_mem16.log` that split statistics are unchanged (still ~76 `.` splits on the repro), confirming we mitigated the failure by enlarging the stack budget rather than altering the grammar's behavior.
+- Locked the change in with `make test tmp\repro_mem10.js` to ensure the harness also records the repro as passing. Longer term we still plan to shrink the `_no_obj` branching factor, but the parser is unblocked for dataset sweeps now that GLR no longer aborts early.
