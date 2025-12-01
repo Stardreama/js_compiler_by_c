@@ -38,6 +38,8 @@ typedef enum
     TOK_CLASS,
     TOK_EXTENDS,
     TOK_SUPER,
+    TOK_IMPORT,
+    TOK_EXPORT,
     TOK_YIELD,
     TOK_ASYNC,
     TOK_AWAIT,

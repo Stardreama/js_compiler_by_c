@@ -9,6 +9,8 @@
 #include "parser.h"  // 由 bison -d 生成，包含 VAR/LET/... 等 token 定义
 #include "diagnostics.h"
 
+extern int parser_is_module_mode(void);
+
 extern void yyerror(const char *s);
 
 static Lexer g_lexer;
@@ -239,6 +241,7 @@ static bool in_statement_context(void) {
         case CATCH:
         case CASE:
         case DEFAULT:
+        case EXPORT:
             return true;
         default:
             return false;
@@ -345,6 +348,8 @@ static int convert_token_type(TokenType type) {
         case TOK_CLASS:      return CLASS;
         case TOK_EXTENDS:    return EXTENDS;
         case TOK_SUPER:      return SUPER;
+        case TOK_IMPORT:     return parser_is_module_mode() ? IMPORT : IDENTIFIER;
+        case TOK_EXPORT:     return parser_is_module_mode() ? EXPORT : IDENTIFIER;
         case TOK_YIELD:      return YIELD;
         case TOK_ASYNC:      return ASYNC;
         case TOK_AWAIT:      return AWAIT;

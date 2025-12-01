@@ -62,7 +62,11 @@ typedef enum
     AST_CLASS_EXPR,
     AST_METHOD_DEF,
     AST_SUPER,
-    AST_COMPUTED_PROP
+    AST_COMPUTED_PROP,
+    AST_IMPORT_DECL,
+    AST_IMPORT_SPECIFIER,
+    AST_EXPORT_DECL,
+    AST_EXPORT_SPECIFIER
 } ASTNodeType;
 
 typedef enum
@@ -404,6 +408,33 @@ struct ASTNode
             ASTNode *key;
             ASTNode *value;
         } computed_prop;
+        struct
+        {
+            ASTList *specifiers;
+            ASTNode *source;
+        } import_decl;
+        struct
+        {
+            char *local_name;
+            char *imported_name;
+            bool is_namespace;
+            bool is_default;
+        } import_specifier;
+        struct
+        {
+            bool is_default;
+            bool export_all;
+            char *export_all_alias;
+            ASTNode *declaration;
+            ASTList *specifiers;
+            ASTNode *source;
+        } export_decl;
+        struct
+        {
+            char *local_name;
+            char *exported_name;
+            bool is_namespace;
+        } export_specifier;
     } data;
 };
 
@@ -477,6 +508,10 @@ ASTNode *ast_make_class_decl(char *name, ASTNode *super_class, ASTList *body);
 ASTNode *ast_make_class_expr(char *name, ASTNode *super_class, ASTList *body);
 ASTNode *ast_make_method_def(char *name, ASTNode *computed_key, bool computed, bool is_static, bool is_generator, bool is_async, ASTMethodKind kind, ASTNode *function);
 ASTNode *ast_make_super_expr(void);
+ASTNode *ast_make_import_decl(ASTList *specifiers, ASTNode *source);
+ASTNode *ast_make_import_specifier(char *local_name, char *imported_name, bool is_namespace, bool is_default);
+ASTNode *ast_make_export_decl(bool is_default, bool export_all, char *export_all_alias, ASTNode *declaration, ASTList *specifiers, ASTNode *source);
+ASTNode *ast_make_export_specifier(char *local_name, char *exported_name, bool is_namespace);
 
 void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata);
 void ast_print(const ASTNode *node);

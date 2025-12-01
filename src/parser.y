@@ -17,6 +17,7 @@ void yyerror(const char *s);
 
 static ASTNode *g_parser_ast_root = NULL;
 static int g_parser_error_count = 0;
+static bool g_parser_module_mode = true;
 
 #ifndef JS_METHOD_INFO_DEFINED
 #define JS_METHOD_INFO_DEFINED
@@ -261,7 +262,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
     MethodInfo method;
 }
 
-%token VAR LET CONST FUNCTION FUNCTION_DECL IF ELSE FOR RETURN ASYNC AWAIT
+%token VAR LET CONST FUNCTION FUNCTION_DECL IF ELSE FOR RETURN ASYNC AWAIT IMPORT EXPORT
 %token WHILE DO BREAK CONTINUE
 %token SWITCH CASE DEFAULT TRY CATCH FINALLY THROW NEW THIS TYPEOF DELETE IN INSTANCEOF VOID WITH DEBUGGER CLASS EXTENDS SUPER
 %token YIELD
@@ -280,8 +281,6 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %glr-parser
 %define parse.error verbose
 %define parse.trace true
-%expect 137
-%expect-rr 282
 %right '=' PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN SLASH_ASSIGN PERCENT_ASSIGN AND_ASSIGN OR_ASSIGN XOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN URSHIFT_ASSIGN
 %right '?' ':'
 %left OR
@@ -297,7 +296,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %right NEW
 %right UMINUS '!' '~' TYPEOF DELETE VOID PLUS_PLUS MINUS_MINUS
 
-%type <node> program stmt block var_stmt var_stmt_no_in return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init for_in_left opt_expr catch_clause finally_clause finally_clause_opt switch_case var_decl var_decl_no_in class_decl class_expr class_element method_definition getter_definition setter_definition computed_property class_heritage_opt
+%type <node> program module_item stmt block var_stmt var_stmt_no_in return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init for_in_left opt_expr catch_clause finally_clause finally_clause_opt switch_case var_decl var_decl_no_in class_decl class_expr class_element method_definition getter_definition setter_definition computed_property class_heritage_opt import_stmt export_stmt import_default_binding namespace_import import_specifier module_specifier export_specifier
 %type <node> expr assignment_expr assignment_expr_no_pattern conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr shift_expr additive_expr multiplicative_expr unary_expr postfix_expr postfix_expr_no_arr left_hand_side_expr left_hand_side_expr_no_arr call_expr call_expr_no_arr member_expr member_expr_no_arr new_expr new_expr_no_arr primary_expr primary_no_arr function_expr template_literal
 %type <node> assignment_expr_no_pattern_no_in conditional_expr_no_in logical_or_expr_no_in logical_and_expr_no_in bitwise_or_expr_no_in bitwise_xor_expr_no_in bitwise_and_expr_no_in equality_expr_no_in relational_expr_no_in
 %type <node> expr_no_obj assignment_expr_no_obj assignment_expr_no_pattern_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj postfix_expr_no_obj_no_arr left_hand_side_expr_no_obj left_hand_side_expr_no_obj_no_arr call_expr_no_obj call_expr_no_obj_no_arr member_expr_no_obj member_expr_no_obj_no_arr new_expr_no_obj new_expr_no_obj_no_arr primary_no_obj primary_no_obj_no_arr
@@ -310,21 +309,37 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %type <method> method_name
 
 %type <str> property_name property_name_keyword
-%type <str> for_of_keyword
+%type <str> for_of_keyword from_keyword as_keyword
 
 
-%type <list> stmt_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list var_decl_list_no_in binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list class_body class_element_list class_element_list_opt
+%type <list> stmt_list module_item_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list var_decl_list_no_in binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list class_body class_element_list class_element_list_opt import_clause named_imports import_specifier_list import_specifier_list_opt export_clause export_specifier_list export_specifier_list_opt
 %type <template_parts> template_part_list
 %type <boolean> generator_marker_opt async_modifier_opt
 
 %%
 
 program
-  : stmt_list
+  : module_item_list
       {
           $$ = ast_make_program($1);
           g_parser_ast_root = $$;
       }
+  ;
+
+module_item_list
+  : /* empty */
+      { $$ = NULL; }
+  | module_item_list module_item
+      { $$ = ast_list_append($1, $2); }
+  ;
+
+module_item
+  : stmt
+      { $$ = $1; }
+  | import_stmt
+      { $$ = $1; }
+  | export_stmt
+      { $$ = $1; }
   ;
 
 stmt_list
@@ -371,6 +386,152 @@ stmt
       { $$ = $1; }
   | labeled_stmt
       { $$ = $1; }
+  ;
+
+import_stmt
+    : IMPORT import_clause from_keyword module_specifier ';'
+      { $$ = ast_make_import_decl($2, $4); }
+    | IMPORT module_specifier ';'
+      { $$ = ast_make_import_decl(NULL, $2); }
+  ;
+
+import_clause
+  : import_default_binding
+      { $$ = ast_list_append(NULL, $1); }
+  | namespace_import
+      { $$ = ast_list_append(NULL, $1); }
+  | named_imports
+      { $$ = $1; }
+  | import_default_binding ',' namespace_import
+      { ASTList *list = ast_list_append(NULL, $1); $$ = ast_list_append(list, $3); }
+  | import_default_binding ',' named_imports
+      { ASTList *list = ast_list_append(NULL, $1); $$ = ast_list_concat(list, $3); }
+  ;
+
+named_imports
+  : '{' import_specifier_list_opt '}'
+      { $$ = $2; }
+  ;
+
+import_specifier_list_opt
+  : /* empty */
+      { $$ = NULL; }
+  | import_specifier_list
+      { $$ = $1; }
+  ;
+
+import_specifier_list
+  : import_specifier
+      { $$ = ast_list_append(NULL, $1); }
+  | import_specifier_list ',' import_specifier
+      { $$ = ast_list_append($1, $3); }
+  ;
+
+import_specifier
+  : IDENTIFIER
+      { $$ = ast_make_import_specifier($1, dup_string($1), false, false); }
+  | IDENTIFIER as_keyword IDENTIFIER
+      { $$ = ast_make_import_specifier($3, $1, false, false); }
+  | DEFAULT as_keyword IDENTIFIER
+      { $$ = ast_make_import_specifier($3, dup_string("default"), false, false); }
+  ;
+
+import_default_binding
+  : IDENTIFIER
+      { $$ = ast_make_import_specifier($1, dup_string("default"), false, true); }
+  ;
+
+namespace_import
+  : '*' as_keyword IDENTIFIER
+      { $$ = ast_make_import_specifier($3, NULL, true, false); }
+  ;
+
+module_specifier
+  : STRING
+      { $$ = ast_make_string_literal($1); }
+  ;
+
+export_stmt
+  : EXPORT export_clause from_keyword module_specifier ';'
+      { $$ = ast_make_export_decl(false, false, NULL, NULL, $2, $4); }
+  | EXPORT export_clause ';'
+      { $$ = ast_make_export_decl(false, false, NULL, NULL, $2, NULL); }
+  | EXPORT '*' from_keyword module_specifier ';'
+      { $$ = ast_make_export_decl(false, true, NULL, NULL, NULL, $4); }
+  | EXPORT '*' as_keyword IDENTIFIER from_keyword module_specifier ';'
+      { $$ = ast_make_export_decl(false, true, $4, NULL, NULL, $6); }
+  | EXPORT var_stmt ';'
+      { $$ = ast_make_export_decl(false, false, NULL, $2, NULL, NULL); }
+  | EXPORT func_decl
+      { $$ = ast_make_export_decl(false, false, NULL, $2, NULL, NULL); }
+  | EXPORT class_decl
+      { $$ = ast_make_export_decl(false, false, NULL, $2, NULL, NULL); }
+  | EXPORT DEFAULT func_decl
+      { $$ = ast_make_export_decl(true, false, NULL, $3, NULL, NULL); }
+  | EXPORT DEFAULT class_decl
+      { $$ = ast_make_export_decl(true, false, NULL, $3, NULL, NULL); }
+    | EXPORT DEFAULT assignment_expr_no_obj ';'
+      { $$ = ast_make_export_decl(true, false, NULL, $3, NULL, NULL); }
+  ;
+
+export_clause
+  : '{' export_specifier_list_opt '}'
+      { $$ = $2; }
+  ;
+
+export_specifier_list_opt
+  : /* empty */
+      { $$ = NULL; }
+  | export_specifier_list
+      { $$ = $1; }
+  ;
+
+export_specifier_list
+  : export_specifier
+      { $$ = ast_list_append(NULL, $1); }
+  | export_specifier_list ',' export_specifier
+      { $$ = ast_list_append($1, $3); }
+  ;
+
+export_specifier
+  : IDENTIFIER
+      { $$ = ast_make_export_specifier($1, NULL, false); }
+  | IDENTIFIER as_keyword IDENTIFIER
+      { $$ = ast_make_export_specifier($1, $3, false); }
+  | IDENTIFIER as_keyword DEFAULT
+      { $$ = ast_make_export_specifier($1, dup_string("default"), false); }
+  | DEFAULT as_keyword IDENTIFIER
+      { $$ = ast_make_export_specifier(dup_string("default"), $3, false); }
+  | DEFAULT as_keyword DEFAULT
+      { $$ = ast_make_export_specifier(dup_string("default"), dup_string("default"), false); }
+  | DEFAULT
+      { $$ = ast_make_export_specifier(dup_string("default"), NULL, false); }
+  ;
+
+from_keyword
+  : IDENTIFIER
+      {
+          if (!$1 || !identifier_is($1, "from")) {
+              yyerror("Expected 'from' in module statement");
+              free($1);
+              YYERROR;
+          }
+          free($1);
+          $$ = NULL;
+      }
+  ;
+
+as_keyword
+  : IDENTIFIER
+      {
+          if (!$1 || !identifier_is($1, "as")) {
+              yyerror("Expected 'as' in module statement");
+              free($1);
+              YYERROR;
+          }
+          free($1);
+          $$ = NULL;
+      }
   ;
 
 block
@@ -2138,4 +2299,12 @@ void parser_reset_error_count(void) {
 
 int parser_error_count(void) {
     return g_parser_error_count;
+}
+
+void parser_set_module_mode(int enabled) {
+    g_parser_module_mode = enabled != 0;
+}
+
+int parser_is_module_mode(void) {
+    return g_parser_module_mode ? 1 : 0;
 }

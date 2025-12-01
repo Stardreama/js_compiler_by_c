@@ -182,6 +182,41 @@ ASTNode *ast_make_super_expr(void) {
     return ast_alloc(AST_SUPER);
 }
 
+ASTNode *ast_make_import_decl(ASTList *specifiers, ASTNode *source) {
+    ASTNode *node = ast_alloc(AST_IMPORT_DECL);
+    node->data.import_decl.specifiers = specifiers;
+    node->data.import_decl.source = source;
+    return node;
+}
+
+ASTNode *ast_make_import_specifier(char *local_name, char *imported_name, bool is_namespace, bool is_default) {
+    ASTNode *node = ast_alloc(AST_IMPORT_SPECIFIER);
+    node->data.import_specifier.local_name = local_name;
+    node->data.import_specifier.imported_name = imported_name;
+    node->data.import_specifier.is_namespace = is_namespace;
+    node->data.import_specifier.is_default = is_default;
+    return node;
+}
+
+ASTNode *ast_make_export_decl(bool is_default, bool export_all, char *export_all_alias, ASTNode *declaration, ASTList *specifiers, ASTNode *source) {
+    ASTNode *node = ast_alloc(AST_EXPORT_DECL);
+    node->data.export_decl.is_default = is_default;
+    node->data.export_decl.export_all = export_all;
+    node->data.export_decl.export_all_alias = export_all_alias;
+    node->data.export_decl.declaration = declaration;
+    node->data.export_decl.specifiers = specifiers;
+    node->data.export_decl.source = source;
+    return node;
+}
+
+ASTNode *ast_make_export_specifier(char *local_name, char *exported_name, bool is_namespace) {
+    ASTNode *node = ast_alloc(AST_EXPORT_SPECIFIER);
+    node->data.export_specifier.local_name = local_name;
+    node->data.export_specifier.exported_name = exported_name;
+    node->data.export_specifier.is_namespace = is_namespace;
+    return node;
+}
+
 ASTNode *ast_make_computed_property(ASTNode *key, ASTNode *value) {
     ASTNode *node = ast_alloc(AST_COMPUTED_PROP);
     node->data.computed_prop.key = key;
@@ -771,6 +806,19 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             ast_traverse(node->data.computed_prop.key, visitor, userdata);
             ast_traverse(node->data.computed_prop.value, visitor, userdata);
             break;
+        case AST_IMPORT_DECL:
+            ast_traverse_list(node->data.import_decl.specifiers, visitor, userdata);
+            ast_traverse(node->data.import_decl.source, visitor, userdata);
+            break;
+        case AST_IMPORT_SPECIFIER:
+            break;
+        case AST_EXPORT_DECL:
+            ast_traverse(node->data.export_decl.declaration, visitor, userdata);
+            ast_traverse_list(node->data.export_decl.specifiers, visitor, userdata);
+            ast_traverse(node->data.export_decl.source, visitor, userdata);
+            break;
+        case AST_EXPORT_SPECIFIER:
+            break;
         case AST_EMPTY_STMT:
         case AST_IDENTIFIER:
         case AST_THIS:
@@ -1281,6 +1329,57 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             printf("Value\n");
             ast_print_internal(node->data.computed_prop.value, indent + 4);
             break;
+        case AST_IMPORT_DECL:
+            print_indent(indent);
+            printf("ImportDeclaration\n");
+            if (node->data.import_decl.specifiers) {
+                print_indent(indent + 2);
+                printf("Specifiers\n");
+                ast_print_list(node->data.import_decl.specifiers, indent + 4);
+            }
+            if (node->data.import_decl.source) {
+                print_indent(indent + 2);
+                printf("Source\n");
+                ast_print_internal(node->data.import_decl.source, indent + 4);
+            }
+            break;
+        case AST_IMPORT_SPECIFIER:
+            print_indent(indent);
+            printf("ImportSpecifier local=%s imported=%s namespace=%s default=%s\n",
+                   node->data.import_specifier.local_name ? node->data.import_specifier.local_name : "<none>",
+                   node->data.import_specifier.imported_name ? node->data.import_specifier.imported_name : "<same>",
+                   node->data.import_specifier.is_namespace ? "true" : "false",
+                   node->data.import_specifier.is_default ? "true" : "false");
+            break;
+        case AST_EXPORT_DECL:
+            print_indent(indent);
+            printf("ExportDeclaration default=%s all=%s alias=%s\n",
+                   node->data.export_decl.is_default ? "true" : "false",
+                   node->data.export_decl.export_all ? "true" : "false",
+                   node->data.export_decl.export_all_alias ? node->data.export_decl.export_all_alias : "<none>");
+            if (node->data.export_decl.declaration) {
+                print_indent(indent + 2);
+                printf("Declaration\n");
+                ast_print_internal(node->data.export_decl.declaration, indent + 4);
+            }
+            if (node->data.export_decl.specifiers) {
+                print_indent(indent + 2);
+                printf("Specifiers\n");
+                ast_print_list(node->data.export_decl.specifiers, indent + 4);
+            }
+            if (node->data.export_decl.source) {
+                print_indent(indent + 2);
+                printf("Source\n");
+                ast_print_internal(node->data.export_decl.source, indent + 4);
+            }
+            break;
+        case AST_EXPORT_SPECIFIER:
+            print_indent(indent);
+            printf("ExportSpecifier local=%s exported=%s namespace=%s\n",
+                   node->data.export_specifier.local_name ? node->data.export_specifier.local_name : "<none>",
+                   node->data.export_specifier.exported_name ? node->data.export_specifier.exported_name : "<same>",
+                   node->data.export_specifier.is_namespace ? "true" : "false");
+            break;
         case AST_PROPERTY:
             print_indent(indent);
             printf("Property key=%s%s\n",
@@ -1587,6 +1686,24 @@ void ast_free(ASTNode *node) {
             free(node->data.method_def.name);
             ast_free(node->data.method_def.computed_key);
             ast_free(node->data.method_def.function);
+            break;
+        case AST_IMPORT_DECL:
+            ast_list_free(node->data.import_decl.specifiers);
+            ast_free(node->data.import_decl.source);
+            break;
+        case AST_IMPORT_SPECIFIER:
+            free(node->data.import_specifier.local_name);
+            free(node->data.import_specifier.imported_name);
+            break;
+        case AST_EXPORT_DECL:
+            free(node->data.export_decl.export_all_alias);
+            ast_free(node->data.export_decl.declaration);
+            ast_list_free(node->data.export_decl.specifiers);
+            ast_free(node->data.export_decl.source);
+            break;
+        case AST_EXPORT_SPECIFIER:
+            free(node->data.export_specifier.local_name);
+            free(node->data.export_specifier.exported_name);
             break;
         case AST_SUPER:
             break;

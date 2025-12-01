@@ -3,6 +3,7 @@ re2c:define:YYCTYPE = char;
 re2c:define:YYCURSOR = lexer->cursor;
 re2c:define:YYMARKER = lexer->marker;
 re2c:yyfill:enable = 0;
+re2c:sentinel = 0;
 re2c:indent:top = 1;
 */
 
@@ -162,13 +163,13 @@ Token lexer_next_token(Lexer *lexer) {
         }
         
         // 单行注释
-        "//" [^\n]* {
+        "//" [^\n\x00]* {
             lexer->column += (lexer->cursor - token_start);
             continue;
         }
         
         // 多行注释
-        "/*" ([^*] | "*" [^/])* "*" "/" {
+        "/*" ([^*\x00] | "*" [^/\x00])* "*" "/" {
             while (token_start < lexer->cursor) {
                     if (*token_start == '\n') {
                         lexer->line++;
@@ -214,6 +215,8 @@ Token lexer_next_token(Lexer *lexer) {
         "class"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_CLASS, token_start, lexer->cursor, token_line, token_column); }
         "extends"    { lexer->column += 7; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_EXTENDS, token_start, lexer->cursor, token_line, token_column); }
         "super"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_SUPER, token_start, lexer->cursor, token_line, token_column); }
+        "import"     { lexer->column += 6; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_IMPORT, token_start, lexer->cursor, token_line, token_column); }
+        "export"     { lexer->column += 6; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_EXPORT, token_start, lexer->cursor, token_line, token_column); }
         "yield"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_YIELD, token_start, lexer->cursor, token_line, token_column); }
         "async"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_ASYNC, token_start, lexer->cursor, token_line, token_column); }
         "await"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_AWAIT, token_start, lexer->cursor, token_line, token_column); }
@@ -314,14 +317,14 @@ Token lexer_next_token(Lexer *lexer) {
                 // 正则表达字面量（首字符不能是 '*'，以免与块注释 '/* */' 冲突）
                 "/"
                 (
-                        [^*/\\\r\n[]
-                    | "\\" [^\r\n]
-                    | "[" ( [^\]\\\r\n] | "\\" [^\r\n] )* "]"
+                        [^*/\\\r\n\x00[]
+                    | "\\" [^\r\n\x00]
+                    | "[" ( [^\]\\\r\n\x00] | "\\" [^\r\n\x00] )* "]"
                 )
                 (
-                        [^/\\\r\n[]
-                    | "\\" [^\r\n]
-                    | "[" ( [^\]\\\r\n] | "\\" [^\r\n] )* "]"
+                        [^/\\\r\n\x00[]
+                    | "\\" [^\r\n\x00]
+                    | "[" ( [^\]\\\r\n\x00] | "\\" [^\r\n\x00] )* "]"
                 )*
                 "/" [gimsuy]* {
             if (can_start_regex(lexer)) {

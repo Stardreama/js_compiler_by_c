@@ -18,6 +18,7 @@ void parser_set_input(const char *input);
 ASTNode *parser_take_ast(void);
 void parser_reset_error_count(void);
 int parser_error_count(void);
+void parser_set_module_mode(int enabled);
 
 static char *read_file(const char *filename) {
     FILE *file = fopen(filename, "rb");
@@ -48,22 +49,27 @@ static char *read_file(const char *filename) {
 int main(int argc, char **argv) {
     int dump_ast = 0;
     const char *filename = NULL;
+    int module_mode = 1;
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--dump-ast") == 0) {
             dump_ast = 1;
+        } else if (strcmp(argv[i], "--module") == 0) {
+            module_mode = 1;
+        } else if (strcmp(argv[i], "--script") == 0) {
+            module_mode = 0;
         } else if (!filename) {
             filename = argv[i];
         } else {
             fprintf(stderr, "Unknown argument: %s\n", argv[i]);
-            fprintf(stderr, "Usage: %s [--dump-ast] <javascript_file>\n", argv[0]);
+            fprintf(stderr, "Usage: %s [--dump-ast] [--module|--script] <javascript_file>\n", argv[0]);
             return 1;
         }
     }
 
     if (!filename) {
         printf("JavaScript Parser - Syntax Checker\n");
-        printf("Usage: %s [--dump-ast] <javascript_file>\n", argv[0]);
+        printf("Usage: %s [--dump-ast] [--module|--script] <javascript_file>\n", argv[0]);
         return 1;
     }
 
@@ -76,6 +82,7 @@ int main(int argc, char **argv) {
     diag_set_error_log_path(log_path);
 
     parser_reset_error_count();
+    parser_set_module_mode(module_mode);
     parser_set_input(input);
     // if (getenv("JS_PARSER_TRACE")) {
     //     yydebug = 1;

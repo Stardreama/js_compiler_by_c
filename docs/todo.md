@@ -203,21 +203,21 @@
 
 1. **lexer.re**
 
-- 新增 `...` spread token（若未完全支持），以及关键字 `yield`, `of`（上下文关键字）。
+- [x] 新增 `...` spread token（若未完全支持），以及关键字 `yield`, `of`（上下文关键字）。
 
 2. **语法/AST**
 
-- `for_stmt` 新增 `for_of_stmt` 产生式，复用 M1 的 binding pattern。
-- `function` 与 `generator_function` 区分：`function*`、`yield` 表达式（含 `yield*`）。
-- `spread_element` 用于数组/调用表达式。
+- [x] `for_stmt` 新增 `for_of_stmt` 产生式，复用 M1 的 binding pattern。
+- [x] `function` 与 `generator_function` 区分：`function*`、`yield` 表达式（含 `yield*`）。
+- [x] `spread_element` 用于数组/调用表达式。
 
 3. **ASI**
 
-- `yield` 属于受限产生式，需要加入 `is_restricted_token` 列表，防止 `yield\n1` 被错误解析。
+- [x] `yield` 属于受限产生式，需要加入 `is_restricted_token` 列表，防止 `yield\n1` 被错误解析。
 
 4. **测试**
 
-- `test/es6_stage5/for_of.js`, `for_of_bindings.js`, `generators.js`, `generator_methods.js`, `spread_rest.js`, `spread_calls.js`，以及负例 `test_error_yield_newline.js`, `test_error_for_of_initializer.js`。
+- [x] `test/es6_stage5/for_of.js`, `for_of_bindings.js`, `generators.js`, `generator_methods.js`, `spread_rest.js`, `spread_calls.js`，以及负例 `test_error_yield_newline.js`, `test_error_for_of_initializer.js`。
 
 ---
 
