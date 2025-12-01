@@ -13,6 +13,7 @@ static int g_last_token = 0;
 static bool g_last_token_closed_control = false;
 static int g_prev_token = 0;
 static bool g_last_token_closed_function = false;
+static bool g_lex_error = false;
 
 // 跟踪括号层级及控制语句的条件括号，用于避免在 if(...) 等后面误插入分号
 #define CONTROL_STACK_MAX 64
@@ -342,6 +343,7 @@ void parser_set_input(const char *input) {
     g_control_top = 0;
     g_pending.valid = false;
     g_brace_top = 0;
+    g_lex_error = false;
 }
 
 // bison 调用的词法函数
@@ -383,6 +385,7 @@ int yylex(void) {
         if (mapped < 0) {
             fprintf(stderr, "Lexical error at line %d, column %d\n", tk.line, tk.column);
             token_free(&tk);
+            g_lex_error = true;
             return 0;
         }
 
@@ -409,6 +412,10 @@ int yylex(void) {
         update_token_state(mapped);
         return mapped;
     }
+}
+
+int parser_had_lex_error(void) {
+    return g_lex_error ? 1 : 0;
 }
 
 // bison 的错误回调在 parser.y 中实现，这里不重复实现
