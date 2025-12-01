@@ -1,4 +1,4 @@
 function* broken() {
-  yield;
+  yield
   1;
 }

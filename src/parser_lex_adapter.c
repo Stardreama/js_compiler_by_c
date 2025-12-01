@@ -19,6 +19,7 @@ static int g_prev_token = 0;
 static bool g_last_token_closed_function = false;
 static bool g_last_token_closed_paren = false;
 static bool g_skip_arrow_detection_once = false;
+static bool g_async_allows_function_decl = false;
 
 // 跟踪括号层级及控制语句的条件括号，用于避免在 if(...) 等后面误插入分号
 #define CONTROL_STACK_MAX 64
@@ -345,6 +346,8 @@ static int convert_token_type(TokenType type) {
         case TOK_EXTENDS:    return EXTENDS;
         case TOK_SUPER:      return SUPER;
         case TOK_YIELD:      return YIELD;
+        case TOK_ASYNC:      return ASYNC;
+        case TOK_AWAIT:      return AWAIT;
 
         case TOK_TRUE:       return TRUE;
         case TOK_FALSE:      return FALSE;
@@ -565,8 +568,18 @@ int yylex(void) {
         diag_set_last_token_location(token_line, token_column);
         token_free(&tk);
 
-        if (mapped == FUNCTION && in_statement_context()) {
-            mapped = FUNCTION_DECL;
+        if (mapped == ASYNC) {
+            g_async_allows_function_decl = in_statement_context();
+        }
+
+        if (mapped == FUNCTION) {
+            bool should_be_decl = in_statement_context() || g_async_allows_function_decl;
+            if (should_be_decl) {
+                mapped = FUNCTION_DECL;
+            }
+            g_async_allows_function_decl = false;
+        } else if (mapped != ASYNC) {
+            g_async_allows_function_decl = false;
         }
 
         bool skip_detection = g_skip_arrow_detection_once;

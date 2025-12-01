@@ -25,6 +25,7 @@ typedef struct MethodInfo {
     ASTNode *computed_key;
     bool computed;
     bool is_generator;
+    bool is_async;
     bool is_static;
     ASTMethodKind kind;
 } MethodInfo;
@@ -60,6 +61,7 @@ static MethodInfo method_info_from_name(char *name) {
     info.computed_key = NULL;
     info.computed = false;
     info.is_generator = false;
+    info.is_async = false;
     info.is_static = false;
     info.kind = AST_METHOD_KIND_NORMAL;
     return info;
@@ -71,6 +73,7 @@ static MethodInfo method_info_from_computed(ASTNode *expr) {
     info.computed_key = expr;
     info.computed = true;
     info.is_generator = false;
+    info.is_async = false;
     info.is_static = false;
     info.kind = AST_METHOD_KIND_NORMAL;
     return info;
@@ -84,11 +87,18 @@ static ASTList *make_single_param_list(ASTNode *param) {
 static ASTNode *build_method_node(MethodInfo *info, ASTList *params, ASTNode *body) {
     char *func_name = dup_string(info->name);
     ASTNode *func = ast_make_function_expr(func_name, params, body);
+    if (info->is_generator && func) {
+        func->data.function_expr.is_generator = true;
+    }
+    if (info->is_async && func) {
+        func->data.function_expr.is_async = true;
+    }
     return ast_make_method_def(info->name,
                               info->computed_key,
                               info->computed,
                               info->is_static,
                               info->is_generator,
+                              info->is_async,
                               info->kind,
                               func);
 }
@@ -228,6 +238,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
         ASTNode *computed_key;
         bool computed;
         bool is_generator;
+        bool is_async;
         bool is_static;
         ASTMethodKind kind;
     } MethodInfo;
@@ -250,7 +261,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
     MethodInfo method;
 }
 
-%token VAR LET CONST FUNCTION FUNCTION_DECL IF ELSE FOR RETURN
+%token VAR LET CONST FUNCTION FUNCTION_DECL IF ELSE FOR RETURN ASYNC AWAIT
 %token WHILE DO BREAK CONTINUE
 %token SWITCH CASE DEFAULT TRY CATCH FINALLY THROW NEW THIS TYPEOF DELETE IN INSTANCEOF VOID WITH DEBUGGER CLASS EXTENDS SUPER
 %token YIELD
@@ -269,6 +280,8 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %glr-parser
 %define parse.error verbose
 %define parse.trace true
+%expect 137
+%expect-rr 282
 %right '=' PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN SLASH_ASSIGN PERCENT_ASSIGN AND_ASSIGN OR_ASSIGN XOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN URSHIFT_ASSIGN
 %right '?' ':'
 %left OR
@@ -302,7 +315,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 
 %type <list> stmt_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list var_decl_list_no_in binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list class_body class_element_list class_element_list_opt
 %type <template_parts> template_part_list
-%type <boolean> generator_marker_opt
+%type <boolean> generator_marker_opt async_modifier_opt
 
 %%
 
@@ -435,7 +448,9 @@ for_stmt
   | FOR '(' for_in_left IN expr ')' stmt
       { $$ = ast_make_for_in($3, $5, $7); }
   | FOR '(' for_in_left for_of_keyword expr ')' stmt
-      { $$ = ast_make_for_of($3, $5, $7); }
+    { $$ = ast_make_for_of($3, $5, $7, false); }
+    | FOR AWAIT '(' for_in_left for_of_keyword expr ')' stmt
+        { $$ = ast_make_for_of($4, $6, $8, true); }
   ;
 
 while_stmt
@@ -521,19 +536,32 @@ generator_marker_opt
       { $$ = 0; }
   ;
 
+async_modifier_opt
+  : ASYNC
+      { $$ = 1; }
+  | /* empty */
+      { $$ = 0; }
+  ;
+
 func_decl
-    : FUNCTION_DECL generator_marker_opt IDENTIFIER '(' opt_param_list ')' block
+    : async_modifier_opt FUNCTION_DECL generator_marker_opt IDENTIFIER '(' opt_param_list ')' block
       {
-          $$ = ast_make_function_decl($3, $5, $7);
-          if ($2 && $$) {
+          $$ = ast_make_function_decl($4, $6, $8);
+          if ($3 && $$) {
               $$->data.function_decl.is_generator = true;
           }
+          if ($1 && $$) {
+              $$->data.function_decl.is_async = true;
+          }
       }
-    | FUNCTION_DECL generator_marker_opt '(' opt_param_list ')' block
+    | async_modifier_opt FUNCTION_DECL generator_marker_opt '(' opt_param_list ')' block
       {
-          $$ = ast_make_function_decl(NULL, $4, $6);
-          if ($2 && $$) {
+          $$ = ast_make_function_decl(NULL, $5, $7);
+          if ($3 && $$) {
               $$->data.function_decl.is_generator = true;
+          }
+          if ($1 && $$) {
+              $$->data.function_decl.is_async = true;
           }
       }
   ;
@@ -898,6 +926,8 @@ unary_expr
       { $$ = ast_make_unary("delete", $2); }
   | VOID unary_expr
       { $$ = ast_make_unary("void", $2); }
+  | AWAIT unary_expr
+      { $$ = ast_make_await($2); }
   | PLUS_PLUS unary_expr
       { $$ = ast_make_update("++", $2, true); }
   | MINUS_MINUS unary_expr
@@ -1092,18 +1122,24 @@ primary_no_arr
   ;
 
 function_expr
-    : FUNCTION generator_marker_opt IDENTIFIER '(' opt_param_list ')' block
+    : async_modifier_opt FUNCTION generator_marker_opt IDENTIFIER '(' opt_param_list ')' block
       {
-          $$ = ast_make_function_expr($3, $5, $7);
-          if ($2 && $$) {
+          $$ = ast_make_function_expr($4, $6, $8);
+          if ($3 && $$) {
               $$->data.function_expr.is_generator = true;
           }
+          if ($1 && $$) {
+              $$->data.function_expr.is_async = true;
+          }
       }
-  | FUNCTION generator_marker_opt '(' opt_param_list ')' block
+  | async_modifier_opt FUNCTION generator_marker_opt '(' opt_param_list ')' block
       {
-          $$ = ast_make_function_expr(NULL, $4, $6);
-          if ($2 && $$) {
+          $$ = ast_make_function_expr(NULL, $5, $7);
+          if ($3 && $$) {
               $$->data.function_expr.is_generator = true;
+          }
+          if ($1 && $$) {
+              $$->data.function_expr.is_async = true;
           }
       }
   ;
@@ -1168,16 +1204,22 @@ class_element
     ;
 
 method_definition
-    : method_name '(' opt_param_list ')' block
-            {
-                MethodInfo info = $1;
-                $$ = build_method_node(&info, $3, $5);
-            }
-    | '*' method_name '(' opt_param_list ')' block
+    : async_modifier_opt method_name '(' opt_param_list ')' block
             {
                 MethodInfo info = $2;
-                info.is_generator = true;
+                if ($1) {
+                    info.is_async = true;
+                }
                 $$ = build_method_node(&info, $4, $6);
+            }
+    | async_modifier_opt '*' method_name '(' opt_param_list ')' block
+            {
+                MethodInfo info = $3;
+                info.is_generator = true;
+                if ($1) {
+                    info.is_async = true;
+                }
+                $$ = build_method_node(&info, $5, $7);
             }
     ;
 
@@ -1276,6 +1318,23 @@ arrow_function
       }
   | ARROW_HEAD '(' opt_param_list ')' ARROW arrow_body %dprec 2
       { $$ = ast_make_arrow_function($3, $6.body, $6.is_expression); }
+  | ASYNC IDENTIFIER ARROW arrow_body %dprec 2
+      {
+          ASTList *params = NULL;
+          ASTNode *binding = ast_make_binding_pattern(ast_make_identifier($2), NULL);
+          params = ast_list_append(params, binding);
+          $$ = ast_make_arrow_function(params, $4.body, $4.is_expression);
+          if ($$) {
+              $$->data.arrow_function.is_async = true;
+          }
+      }
+  | ASYNC ARROW_HEAD '(' opt_param_list ')' ARROW arrow_body %dprec 2
+      {
+          $$ = ast_make_arrow_function($4, $7.body, $7.is_expression);
+          if ($$) {
+              $$->data.arrow_function.is_async = true;
+          }
+      }
   ;
 
 arrow_body
@@ -1411,6 +1470,8 @@ unary_expr_no_obj
       { $$ = ast_make_unary("delete", $2); }
   | VOID unary_expr_no_obj
       { $$ = ast_make_unary("void", $2); }
+  | AWAIT unary_expr_no_obj
+      { $$ = ast_make_await($2); }
   | PLUS_PLUS unary_expr_no_obj
       { $$ = ast_make_update("++", $2, true); }
   | MINUS_MINUS unary_expr_no_obj
@@ -1802,6 +1863,8 @@ prop
       { $$ = $1; }
   | computed_property
       { $$ = $1; }
+  | spread_element
+      { $$ = $1; }
   ;
 
 computed_property
@@ -1852,6 +1915,8 @@ property_name_keyword
     | CLASS      { $$ = strdup("class"); }
     | EXTENDS    { $$ = strdup("extends"); }
     | SUPER      { $$ = strdup("super"); }
+    | ASYNC      { $$ = strdup("async"); }
+    | AWAIT      { $$ = strdup("await"); }
     ;
 
 binding_initializer_opt

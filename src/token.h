@@ -39,6 +39,8 @@ typedef enum
     TOK_EXTENDS,
     TOK_SUPER,
     TOK_YIELD,
+    TOK_ASYNC,
+    TOK_AWAIT,
 
     // 字面量
     TOK_TRUE,

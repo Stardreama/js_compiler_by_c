@@ -215,6 +215,8 @@ Token lexer_next_token(Lexer *lexer) {
         "extends"    { lexer->column += 7; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_EXTENDS, token_start, lexer->cursor, token_line, token_column); }
         "super"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_SUPER, token_start, lexer->cursor, token_line, token_column); }
         "yield"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_YIELD, token_start, lexer->cursor, token_line, token_column); }
+        "async"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_ASYNC, token_start, lexer->cursor, token_line, token_column); }
+        "await"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_AWAIT, token_start, lexer->cursor, token_line, token_column); }
         
         // 字面量
         "true"       { lexer->column += 4; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_TRUE, token_start, lexer->cursor, token_line, token_column); }

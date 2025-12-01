@@ -22,6 +22,25 @@
 - 输出格式清晰易读
 ```
 
+## 2025-12-01 ES6 Stage5 回归（已通过）
+
+- 新增测试: `test/es6_stage5/object_spread.js`, `test/es6_stage5/async_features.js`, `test/es6_stage5/for_await.js`, `test/es6_stage5/test_error_yield_newline.js`
+- 关键能力: 对象字面量 `...spread`、对象/参数 `...rest`、`async function`/`async function*`、异步方法/箭头函数、`await` 一元表达式、`for await...of`、受限 `yield` 诊断
+- 执行命令: `./make test ./test/es6_stage5`
+- 构建状态: ✅ 成功（Bison + re2c 重新生成后 js_parser.exe 最新）
+- 测试结果: ✅ 11/11 样例全部符合期望（其中 `test_error_for_of_initializer.js` 与 `test_error_yield_newline.js` 仍保持“预期失败”状态并被正确捕获）
+
+| 测试文件                         | 结果     | 覆盖点                                                                  |
+| -------------------------------- | -------- | ----------------------------------------------------------------------- |
+| object_spread.js                 | 通过     | 常规 `...spread`、嵌套合并、对象/解构组合                               |
+| async_features.js                | 通过     | async function / async function\* / async 方法与箭头、`await` 运算符    |
+| for_await.js                     | 通过     | `for await...of` + async 迭代器/生成器组合                              |
+| spread_calls.js / rest.js 等     | 通过     | 维持历史 spread/rest 行为                                               |
+| test_error_for_of_initializer.js | 预期失败 | `for-of` 初始化器校验                                                   |
+| test_error_yield_newline.js      | 预期失败 | `yield` 后换行被拒绝（触发 `LineTerminator not allowed after 'yield'`） |
+
+本轮新增语法均已被 AST 和测试覆盖，可作为 Stage5 的回归基线。
+
 **示例输出:**
 
 ```text

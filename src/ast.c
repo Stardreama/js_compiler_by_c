@@ -165,13 +165,14 @@ ASTNode *ast_make_class_expr(char *name, ASTNode *super_class, ASTList *body) {
     return node;
 }
 
-ASTNode *ast_make_method_def(char *name, ASTNode *computed_key, bool computed, bool is_static, bool is_generator, ASTMethodKind kind, ASTNode *function) {
+ASTNode *ast_make_method_def(char *name, ASTNode *computed_key, bool computed, bool is_static, bool is_generator, bool is_async, ASTMethodKind kind, ASTNode *function) {
     ASTNode *node = ast_alloc(AST_METHOD_DEF);
     node->data.method_def.name = name;
     node->data.method_def.computed_key = computed_key;
     node->data.method_def.computed = computed;
     node->data.method_def.is_static = is_static;
     node->data.method_def.is_generator = is_generator;
+    node->data.method_def.is_async = is_async;
     node->data.method_def.kind = kind;
     node->data.method_def.function = function;
     return node;
@@ -193,6 +194,8 @@ ASTNode *ast_make_function_decl(char *name, ASTList *params, ASTNode *body) {
     node->data.function_decl.name = name;
     node->data.function_decl.params = params;
     node->data.function_decl.body = body;
+    node->data.function_decl.is_generator = false;
+    node->data.function_decl.is_async = false;
     return node;
 }
 
@@ -201,6 +204,8 @@ ASTNode *ast_make_function_expr(char *name, ASTList *params, ASTNode *body){
     node->data.function_expr.name = name;
     node->data.function_expr.params = params;
     node->data.function_expr.body = body;
+    node->data.function_expr.is_generator = false;
+    node->data.function_expr.is_async = false;
     return node;
 }
 
@@ -209,6 +214,7 @@ ASTNode *ast_make_arrow_function(ASTList *params, ASTNode *body, bool is_express
     node->data.arrow_function.params = params;
     node->data.arrow_function.body = body;
     node->data.arrow_function.is_expression_body = is_expression_body;
+    node->data.arrow_function.is_async = false;
     return node;
 }
 
@@ -243,11 +249,12 @@ ASTNode *ast_make_for_in(ASTNode *init, ASTNode *obj, ASTNode *body) {
     return node;
 }
 
-ASTNode *ast_make_for_of(ASTNode *init, ASTNode *iterable, ASTNode *body) {
+ASTNode *ast_make_for_of(ASTNode *init, ASTNode *iterable, ASTNode *body, bool is_async) {
     ASTNode *node = ast_alloc(AST_FOR_OF_STMT);
     node->data.for_of_stmt.init = init;
     node->data.for_of_stmt.iterable = iterable;
     node->data.for_of_stmt.body = body;
+    node->data.for_of_stmt.is_async = is_async;
     return node;
 }
 
@@ -524,6 +531,12 @@ ASTNode *ast_make_yield(ASTNode *argument, bool is_delegate) {
     return node;
 }
 
+ASTNode *ast_make_await(ASTNode *argument) {
+    ASTNode *node = ast_alloc(AST_AWAIT_EXPR);
+    node->data.await_expr.argument = argument;
+    return node;
+}
+
 ASTNode *ast_make_array_literal(ASTList *elements) {
     ASTNode *node = ast_alloc(AST_ARRAY_LITERAL);
     node->data.array_literal.elements = elements;
@@ -699,6 +712,9 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
         case AST_YIELD_EXPR:
             ast_traverse(node->data.yield_expr.argument, visitor, userdata);
             break;
+        case AST_AWAIT_EXPR:
+            ast_traverse(node->data.await_expr.argument, visitor, userdata);
+            break;
         case AST_ARRAY_LITERAL:
             ast_traverse_list(node->data.array_literal.elements, visitor, userdata);
             break;
@@ -824,9 +840,10 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_FUNCTION_DECL:
             print_indent(indent);
-             printf("FunctionDeclaration name=%s generator=%s\n",
-                 node->data.function_decl.name ? node->data.function_decl.name : "<anonymous>",
-                 node->data.function_decl.is_generator ? "true" : "false");
+                printf("FunctionDeclaration name=%s generator=%s async=%s\n",
+                    node->data.function_decl.name ? node->data.function_decl.name : "<anonymous>",
+                    node->data.function_decl.is_generator ? "true" : "false",
+                    node->data.function_decl.is_async ? "true" : "false");
             if (node->data.function_decl.params) {
                 print_indent(indent + 2);
                 printf("Params\n");
@@ -838,9 +855,10 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_FUNCTION_EXPR:
             print_indent(indent);
-             printf("FunctionExpression name=%s generator=%s\n",
-                 node->data.function_expr.name ? node->data.function_expr.name : "<anonymous>",
-                 node->data.function_expr.is_generator ? "true" : "false");
+                printf("FunctionExpression name=%s generator=%s async=%s\n",
+                    node->data.function_expr.name ? node->data.function_expr.name : "<anonymous>",
+                    node->data.function_expr.is_generator ? "true" : "false",
+                    node->data.function_expr.is_async ? "true" : "false");
             if (node->data.function_expr.params) {
                 print_indent(indent + 2);
                 printf("Params\n");
@@ -852,8 +870,9 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_ARROW_FUNCTION:
             print_indent(indent);
-            printf("ArrowFunction expressionBody=%s\n",
-                   node->data.arrow_function.is_expression_body ? "true" : "false");
+                printf("ArrowFunction expressionBody=%s async=%s\n",
+                    node->data.arrow_function.is_expression_body ? "true" : "false",
+                    node->data.arrow_function.is_async ? "true" : "false");
             if (node->data.arrow_function.params) {
                 print_indent(indent + 2);
                 printf("Params\n");
@@ -914,7 +933,8 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_FOR_OF_STMT:
             print_indent(indent);
-            printf("ForOfStatement\n");
+            printf("ForOfStatement async=%s\n",
+                   node->data.for_of_stmt.is_async ? "true" : "false");
             print_indent(indent + 2);
             printf("Init\n");
             ast_print_internal(node->data.for_of_stmt.init, indent + 4);
@@ -1174,6 +1194,11 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             printf("YieldExpression delegate=%s\n", node->data.yield_expr.is_delegate ? "true" : "false");
             ast_print_internal(node->data.yield_expr.argument, indent + 2);
             break;
+        case AST_AWAIT_EXPR:
+            print_indent(indent);
+            printf("AwaitExpression\n");
+            ast_print_internal(node->data.await_expr.argument, indent + 2);
+            break;
         case AST_ARRAY_LITERAL:
             print_indent(indent);
             printf("ArrayLiteral\n");
@@ -1224,10 +1249,11 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_METHOD_DEF:
             print_indent(indent);
-            printf("MethodDefinition kind=%s static=%s generator=%s\n",
+             printf("MethodDefinition kind=%s static=%s generator=%s async=%s\n",
                    method_kind_to_string(node->data.method_def.kind),
                    node->data.method_def.is_static ? "true" : "false",
-                   node->data.method_def.is_generator ? "true" : "false");
+                 node->data.method_def.is_generator ? "true" : "false",
+                 node->data.method_def.is_async ? "true" : "false");
             if (node->data.method_def.computed) {
                 print_indent(indent + 2);
                 printf("ComputedKey\n");
@@ -1499,6 +1525,9 @@ void ast_free(ASTNode *node) {
             break;
         case AST_YIELD_EXPR:
             ast_free(node->data.yield_expr.argument);
+            break;
+        case AST_AWAIT_EXPR:
+            ast_free(node->data.await_expr.argument);
             break;
         case AST_ARRAY_LITERAL:
             ast_list_free(node->data.array_literal.elements);
