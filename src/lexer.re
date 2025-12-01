@@ -23,6 +23,7 @@ void lexer_init(Lexer *lexer, const char *input) {
     lexer->prev_tok_state = PREV_TOK_CAN_REGEX;
     lexer->in_template_expression = false;
     lexer->template_expr_depth = 0;
+    lexer->template_nesting_depth = 0;
 }
 
 // 创建 token
@@ -92,6 +93,7 @@ static Token lex_template_segment(Lexer *lexer, bool is_start) {
             lexer->column += 2;
             lexer->in_template_expression = true;
             lexer->template_expr_depth = 0;
+            lexer->template_nesting_depth++;
             lexer->prev_tok_state = PREV_TOK_CAN_REGEX;
             return token;
         }
@@ -209,6 +211,10 @@ Token lexer_next_token(Lexer *lexer) {
         "void"       { lexer->column += 4; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_VOID, token_start, lexer->cursor, token_line, token_column); }
         "with"       { lexer->column += 4; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_WITH, token_start, lexer->cursor, token_line, token_column); }
         "debugger"   { lexer->column += 8; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_DEBUGGER, token_start, lexer->cursor, token_line, token_column); }
+        "class"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_CLASS, token_start, lexer->cursor, token_line, token_column); }
+        "extends"    { lexer->column += 7; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_EXTENDS, token_start, lexer->cursor, token_line, token_column); }
+        "super"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_SUPER, token_start, lexer->cursor, token_line, token_column); }
+        "yield"      { lexer->column += 5; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_YIELD, token_start, lexer->cursor, token_line, token_column); }
         
         // 字面量
         "true"       { lexer->column += 4; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_TRUE, token_start, lexer->cursor, token_line, token_column); }
@@ -416,10 +422,16 @@ Token lexer_next_token(Lexer *lexer) {
                     lexer->prev_tok_state = PREV_TOK_NO_REGEX;
                     return make_token(TOK_RBRACE, NULL, NULL, token_line, token_column);
                 }
-                lexer->in_template_expression = false;
+                if (lexer->template_nesting_depth > 0) {
+                    lexer->template_nesting_depth--;
+                }
+                lexer->in_template_expression = (lexer->template_nesting_depth > 0);
                 Token tpl = lex_template_segment(lexer, false);
                 if (tpl.type == TOK_ERROR) {
                     return tpl;
+                }
+                if (lexer->template_nesting_depth > 0) {
+                    lexer->in_template_expression = true;
                 }
                 return tpl;
             }
@@ -498,6 +510,10 @@ const char *token_type_to_string(TokenType type) {
         case TOK_VOID: return "VOID";
         case TOK_WITH: return "WITH";
         case TOK_DEBUGGER: return "DEBUGGER";
+        case TOK_CLASS: return "CLASS";
+        case TOK_EXTENDS: return "EXTENDS";
+        case TOK_SUPER: return "SUPER";
+        case TOK_YIELD: return "YIELD";
         case TOK_TRUE: return "TRUE";
         case TOK_FALSE: return "FALSE";
         case TOK_NULL: return "NULL";

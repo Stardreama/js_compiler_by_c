@@ -19,7 +19,7 @@ a
 
 1. **文件结束（EOF）**：输入结束但最后一个 token 可以结束语句时，自动补分号。
 
-1. **受限产生式**：`return`、`break`、`continue`、`throw` 遇到换行、`}` 或 EOF 必须插入分号：
+1. **受限产生式**：`return`、`break`、`continue`、`throw`、`yield` 遇到换行、`}` 或 EOF 必须插入分号：
 
 ```javascript
 function foo() {
@@ -63,8 +63,8 @@ static bool should_insert_semicolon(int last_token,
 
 ## 典型测试用例
 
-| 文件                        | 场景                 | 预期         | 备注             |
-| --------------------------- | -------------------- | ------------ | ---------------- |
+| 文件                       | 场景                 | 预期         | 备注             |
+| -------------------------- | -------------------- | ------------ | ---------------- |
 | `test/test_asi_basic.js`   | `a` 换行 `++b`       | 分号自动插入 | 也覆盖链式语句   |
 | `test/test_asi_return.js`  | `return` 换行        | `return;`    | 验证受限产生式   |
 | `test/test_asi_control.js` | `if (true)` 单行语句 | 不误插分号   | 校验控制语句保护 |
@@ -72,7 +72,7 @@ static bool should_insert_semicolon(int last_token,
 ## 常见扩展需求
 
 - **新增关键字**：务必在 `parser_lex_adapter.c` 的 `is_control_keyword()` 与 `can_end_statement()` 中同步更新。
-- **新增语句**：若语法允许隐式分号（如未来的 `yield`），请将其加入 `is_restricted_token()`。
+- **新增语句**：若语法允许隐式分号（例如现已支持的 `yield`），请及时把 token 加入 `is_restricted_token()`。
 - **调试建议**：
   - 在 `should_insert_semicolon()` 内部加入日志可观察决策。
   - 使用 `js_parser.exe` 对照 V8/Node.js 行为验证边界情况。
@@ -83,6 +83,27 @@ static bool should_insert_semicolon(int last_token,
 in b)`），后续若支持需补充测试。
 - 正则字面量、模板字符串等 ES6+ 特性会引入更多上下文分析，这部分留待未来迭代。
 
+## 2025-11-11 修复记录
+
+- `test/JavaScript_Datasets/badjs/c262a89b9308208a2296a22303c06b84` 暴露了一个缺陷：内联函数体中的语句若未写分号且 `}` 后紧跟 `)`，`should_insert_semicolon()` 会因为把函数体括号视为“非 block”而拒绝插入分号，导致解析报 `unexpected '}'`。
+- 解决方案：在 `parser_lex_adapter.c` 中允许 `BRACE_FUNCTION`（以及普通 `BRACE_BLOCK`）触发 ASI，而保留 `BRACE_OBJECT` 的抑制逻辑，防止对象字面量误拆。
+
+## 2025-12-01 修复记录
+
+- `test/JavaScript_Datasets/1kbjs/20170223_bf0d33845db834a400d0e4b9e56ee02a` 中的 `try { ... } catch (e) {}` 语句在 `catch` 头与 `{` 之间存在换行，导致适配层在 `)` 之后插入了多余分号，从而报 `unexpected ';', expecting '{'`。
+- 解决方案：把 `CATCH` 视作控制语句关键字，进入括号时压入控制栈，这样 `)` 会设置 `g_last_token_closed_control = true`，ASI 就不会在 `catch` 头与块之间插入分号。
+- `test/JavaScript_Datasets/1kbjs/20170323_05a3cc924d4c8c0699f8d72342482e51` 的 `WScript.CreateObject(...)` 调用把实参分多行书写，`zx.toUpperCase()` 结束后紧接换行再出现 `)`，适配层错误地在该换行处插入分号，导致 `unexpected ';', expecting ')'`。
+- 解决方案：把 `')'` 纳入 `suppress_newline_insertion()`，在括号内部遇到换行再闭合 `)` 时不会触发 ASI，合法的多行调用/条件表达式即可正常解析。
+- `test/JavaScript_Datasets/1kbjs/343a86f7478055585a263256fa1d61c1` 末尾的 `document.getElementById(...).onclick = function(){ ... }` 依赖 EOF 处的 ASI 来补分号，但我们为了支持 `function(){ }()` 这类 IIFE，曾经在所有函数体闭合后直接禁止 ASI，导致语句被解析器要求显式 `;`，报 `unexpected end of file, expecting ';' or ','`。
+- 解决方案：仅当函数体闭合后紧跟 `(`、`[`、`.` 或 `{`（即继续调用/访问或即将出现函数体）时才禁止 ASI；面对 EOF 或其他 token 时允许 ASI，从而既保留 IIFE 行为又能在文件末尾补分号。
+- Generator 特性引入后，`yield` 也必须遵循“受限产生式”规则，否则 `yield\nvalue` 会被误判为合法表达式。
+- 解决方案：在 `is_restricted_token()` 中加入 `YIELD`，并复用现有逻辑在 `yield` 与换行/`}`/EOF 相遇时主动回放 `';'`。
+
+## 2025-12-03 修复记录
+
+- `test/JavaScript_Datasets/1kbjs/960b1ba66cd62048f5a7553ad1b1260a` 以及 `tmp/repro_new_iife.js` 复现了 `new Foo()` 后换行紧跟 `(function(){ ... }())` 的模式。适配层把所有前瞻到 `(` 的换行都判定为“安全”，从而抑制了 ASI，Bison 继续把 `(` 视作调用结果，最终报 `syntax is ambiguous`。
+- 解决方案：在 `should_insert_semicolon()` 调用链中使用 `paren_starts_function_literal()` 判断该 `(` 是否引入 IIFE。若是 `(function ...` 开头，则既允许 ASI 插入分号，也阻止 `suppress_newline_insertion()` 抑制该换行，从而把 `new` 表达式正确结束成独立语句。
+
 ---
 
-**最后更新**：2025-11-10
+**最后更新**：2025-12-03

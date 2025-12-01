@@ -139,8 +139,53 @@ ASTNode *ast_make_rest_element(ASTNode *argument) {
     return node;
 }
 
+ASTNode *ast_make_spread_element(ASTNode *argument) {
+    ASTNode *node = ast_alloc(AST_SPREAD_ELEMENT);
+    node->data.spread_element.argument = argument;
+    return node;
+}
+
 ASTNode *ast_make_array_hole(void) {
     return ast_alloc(AST_ARRAY_HOLE);
+}
+
+ASTNode *ast_make_class_decl(char *name, ASTNode *super_class, ASTList *body) {
+    ASTNode *node = ast_alloc(AST_CLASS_DECL);
+    node->data.class_decl.name = name;
+    node->data.class_decl.super_class = super_class;
+    node->data.class_decl.body = body;
+    return node;
+}
+
+ASTNode *ast_make_class_expr(char *name, ASTNode *super_class, ASTList *body) {
+    ASTNode *node = ast_alloc(AST_CLASS_EXPR);
+    node->data.class_expr.name = name;
+    node->data.class_expr.super_class = super_class;
+    node->data.class_expr.body = body;
+    return node;
+}
+
+ASTNode *ast_make_method_def(char *name, ASTNode *computed_key, bool computed, bool is_static, bool is_generator, ASTMethodKind kind, ASTNode *function) {
+    ASTNode *node = ast_alloc(AST_METHOD_DEF);
+    node->data.method_def.name = name;
+    node->data.method_def.computed_key = computed_key;
+    node->data.method_def.computed = computed;
+    node->data.method_def.is_static = is_static;
+    node->data.method_def.is_generator = is_generator;
+    node->data.method_def.kind = kind;
+    node->data.method_def.function = function;
+    return node;
+}
+
+ASTNode *ast_make_super_expr(void) {
+    return ast_alloc(AST_SUPER);
+}
+
+ASTNode *ast_make_computed_property(ASTNode *key, ASTNode *value) {
+    ASTNode *node = ast_alloc(AST_COMPUTED_PROP);
+    node->data.computed_prop.key = key;
+    node->data.computed_prop.value = value;
+    return node;
 }
 
 ASTNode *ast_make_function_decl(char *name, ASTList *params, ASTNode *body) {
@@ -195,6 +240,14 @@ ASTNode *ast_make_for_in(ASTNode *init, ASTNode *obj, ASTNode *body) {
     node->data.for_in_stmt.init = init;
     node->data.for_in_stmt.obj = obj;
     node->data.for_in_stmt.body = body;
+    return node;
+}
+
+ASTNode *ast_make_for_of(ASTNode *init, ASTNode *iterable, ASTNode *body) {
+    ASTNode *node = ast_alloc(AST_FOR_OF_STMT);
+    node->data.for_of_stmt.init = init;
+    node->data.for_of_stmt.iterable = iterable;
+    node->data.for_of_stmt.body = body;
     return node;
 }
 
@@ -464,6 +517,13 @@ ASTNode *ast_make_member(ASTNode *object, ASTNode *property, bool computed) {
     return node;
 }
 
+ASTNode *ast_make_yield(ASTNode *argument, bool is_delegate) {
+    ASTNode *node = ast_alloc(AST_YIELD_EXPR);
+    node->data.yield_expr.argument = argument;
+    node->data.yield_expr.is_delegate = is_delegate;
+    return node;
+}
+
 ASTNode *ast_make_array_literal(ASTList *elements) {
     ASTNode *node = ast_alloc(AST_ARRAY_LITERAL);
     node->data.array_literal.elements = elements;
@@ -554,6 +614,11 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             ast_traverse(node->data.for_in_stmt.obj, visitor, userdata);
             ast_traverse(node->data.for_in_stmt.body, visitor, userdata);
             break;
+        case AST_FOR_OF_STMT:
+            ast_traverse(node->data.for_of_stmt.init, visitor, userdata);
+            ast_traverse(node->data.for_of_stmt.iterable, visitor, userdata);
+            ast_traverse(node->data.for_of_stmt.body, visitor, userdata);
+            break;
         case AST_WHILE_STMT:
             ast_traverse(node->data.while_stmt.test, visitor, userdata);
             ast_traverse(node->data.while_stmt.body, visitor, userdata);
@@ -631,6 +696,9 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             ast_traverse(node->data.member_expr.object, visitor, userdata);
             ast_traverse(node->data.member_expr.property, visitor, userdata);
             break;
+        case AST_YIELD_EXPR:
+            ast_traverse(node->data.yield_expr.argument, visitor, userdata);
+            break;
         case AST_ARRAY_LITERAL:
             ast_traverse_list(node->data.array_literal.elements, visitor, userdata);
             break;
@@ -664,7 +732,28 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
         case AST_REST_ELEMENT:
             ast_traverse(node->data.rest_element.argument, visitor, userdata);
             break;
+        case AST_SPREAD_ELEMENT:
+            ast_traverse(node->data.spread_element.argument, visitor, userdata);
+            break;
         case AST_ARRAY_HOLE:
+            break;
+        case AST_CLASS_DECL:
+            ast_traverse(node->data.class_decl.super_class, visitor, userdata);
+            ast_traverse_list(node->data.class_decl.body, visitor, userdata);
+            break;
+        case AST_CLASS_EXPR:
+            ast_traverse(node->data.class_expr.super_class, visitor, userdata);
+            ast_traverse_list(node->data.class_expr.body, visitor, userdata);
+            break;
+        case AST_METHOD_DEF:
+            ast_traverse(node->data.method_def.computed_key, visitor, userdata);
+            ast_traverse(node->data.method_def.function, visitor, userdata);
+            break;
+        case AST_SUPER:
+            break;
+        case AST_COMPUTED_PROP:
+            ast_traverse(node->data.computed_prop.key, visitor, userdata);
+            ast_traverse(node->data.computed_prop.value, visitor, userdata);
             break;
         case AST_EMPTY_STMT:
         case AST_IDENTIFIER:
@@ -686,6 +775,16 @@ static const char *var_kind_to_string(ASTVarKind kind) {
         case AST_VAR_KIND_LET:   return "let";
         case AST_VAR_KIND_CONST: return "const";
         default:                 return "unknown";
+    }
+}
+
+static const char *method_kind_to_string(ASTMethodKind kind) {
+    switch (kind) {
+        case AST_METHOD_KIND_NORMAL:      return "method";
+        case AST_METHOD_KIND_GET:         return "get";
+        case AST_METHOD_KIND_SET:         return "set";
+        case AST_METHOD_KIND_CONSTRUCTOR: return "constructor";
+        default:                          return "unknown";
     }
 }
 
@@ -725,8 +824,9 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_FUNCTION_DECL:
             print_indent(indent);
-            printf("FunctionDeclaration name=%s\n",
-                   node->data.function_decl.name ? node->data.function_decl.name : "<anonymous>");
+             printf("FunctionDeclaration name=%s generator=%s\n",
+                 node->data.function_decl.name ? node->data.function_decl.name : "<anonymous>",
+                 node->data.function_decl.is_generator ? "true" : "false");
             if (node->data.function_decl.params) {
                 print_indent(indent + 2);
                 printf("Params\n");
@@ -738,8 +838,9 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_FUNCTION_EXPR:
             print_indent(indent);
-            printf("FunctionExpression name=%s\n",
-                   node->data.function_expr.name ? node->data.function_expr.name : "<anonymous>");
+             printf("FunctionExpression name=%s generator=%s\n",
+                 node->data.function_expr.name ? node->data.function_expr.name : "<anonymous>",
+                 node->data.function_expr.is_generator ? "true" : "false");
             if (node->data.function_expr.params) {
                 print_indent(indent + 2);
                 printf("Params\n");
@@ -810,6 +911,19 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             print_indent(indent + 2);
             printf("Body\n");
             ast_print_internal(node->data.for_in_stmt.body, indent + 4);
+            break;
+        case AST_FOR_OF_STMT:
+            print_indent(indent);
+            printf("ForOfStatement\n");
+            print_indent(indent + 2);
+            printf("Init\n");
+            ast_print_internal(node->data.for_of_stmt.init, indent + 4);
+            print_indent(indent + 2);
+            printf("Iterable\n");
+            ast_print_internal(node->data.for_of_stmt.iterable, indent + 4);
+            print_indent(indent + 2);
+            printf("Body\n");
+            ast_print_internal(node->data.for_of_stmt.body, indent + 4);
             break;
         case AST_WHILE_STMT:
             print_indent(indent);
@@ -1055,6 +1169,11 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             printf("Object\n");
             ast_print_internal(node->data.member_expr.object, indent + 4);
             break;
+        case AST_YIELD_EXPR:
+            print_indent(indent);
+            printf("YieldExpression delegate=%s\n", node->data.yield_expr.is_delegate ? "true" : "false");
+            ast_print_internal(node->data.yield_expr.argument, indent + 2);
+            break;
         case AST_ARRAY_LITERAL:
             print_indent(indent);
             printf("ArrayLiteral\n");
@@ -1072,6 +1191,69 @@ static void ast_print_internal(const ASTNode *node, int indent) {
                 printf("Properties\n");
                 ast_print_list(node->data.object_literal.properties, indent + 4);
             }
+            break;
+        case AST_CLASS_DECL:
+            print_indent(indent);
+            printf("ClassDeclaration name=%s\n",
+                   node->data.class_decl.name ? node->data.class_decl.name : "<anonymous>");
+            if (node->data.class_decl.super_class) {
+                print_indent(indent + 2);
+                printf("SuperClass\n");
+                ast_print_internal(node->data.class_decl.super_class, indent + 4);
+            }
+            if (node->data.class_decl.body) {
+                print_indent(indent + 2);
+                printf("Body\n");
+                ast_print_list(node->data.class_decl.body, indent + 4);
+            }
+            break;
+        case AST_CLASS_EXPR:
+            print_indent(indent);
+            printf("ClassExpression name=%s\n",
+                   node->data.class_expr.name ? node->data.class_expr.name : "<anonymous>");
+            if (node->data.class_expr.super_class) {
+                print_indent(indent + 2);
+                printf("SuperClass\n");
+                ast_print_internal(node->data.class_expr.super_class, indent + 4);
+            }
+            if (node->data.class_expr.body) {
+                print_indent(indent + 2);
+                printf("Body\n");
+                ast_print_list(node->data.class_expr.body, indent + 4);
+            }
+            break;
+        case AST_METHOD_DEF:
+            print_indent(indent);
+            printf("MethodDefinition kind=%s static=%s generator=%s\n",
+                   method_kind_to_string(node->data.method_def.kind),
+                   node->data.method_def.is_static ? "true" : "false",
+                   node->data.method_def.is_generator ? "true" : "false");
+            if (node->data.method_def.computed) {
+                print_indent(indent + 2);
+                printf("ComputedKey\n");
+                ast_print_internal(node->data.method_def.computed_key, indent + 4);
+            } else {
+                print_indent(indent + 2);
+                printf("Key name=%s\n",
+                       node->data.method_def.name ? node->data.method_def.name : "<anonymous>");
+            }
+            print_indent(indent + 2);
+            printf("Function\n");
+            ast_print_internal(node->data.method_def.function, indent + 4);
+            break;
+        case AST_SUPER:
+            print_indent(indent);
+            printf("Super\n");
+            break;
+        case AST_COMPUTED_PROP:
+            print_indent(indent);
+            printf("ComputedProperty\n");
+            print_indent(indent + 2);
+            printf("Key\n");
+            ast_print_internal(node->data.computed_prop.key, indent + 4);
+            print_indent(indent + 2);
+            printf("Value\n");
+            ast_print_internal(node->data.computed_prop.value, indent + 4);
             break;
         case AST_PROPERTY:
             print_indent(indent);
@@ -1149,6 +1331,11 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             printf("RestElement\n");
             ast_print_internal(node->data.rest_element.argument, indent + 2);
             break;
+        case AST_SPREAD_ELEMENT:
+            print_indent(indent);
+            printf("SpreadElement\n");
+            ast_print_internal(node->data.spread_element.argument, indent + 2);
+            break;
         case AST_ARRAY_HOLE:
             print_indent(indent);
             printf("ArrayHole\n");
@@ -1209,6 +1396,11 @@ void ast_free(ASTNode *node) {
             ast_free(node->data.for_in_stmt.init);
             ast_free(node->data.for_in_stmt.obj);
             ast_free(node->data.for_in_stmt.body);
+            break;
+        case AST_FOR_OF_STMT:
+            ast_free(node->data.for_of_stmt.init);
+            ast_free(node->data.for_of_stmt.iterable);
+            ast_free(node->data.for_of_stmt.body);
             break;
         case AST_WHILE_STMT:
             ast_free(node->data.while_stmt.test);
@@ -1305,6 +1497,9 @@ void ast_free(ASTNode *node) {
             ast_free(node->data.member_expr.object);
             ast_free(node->data.member_expr.property);
             break;
+        case AST_YIELD_EXPR:
+            ast_free(node->data.yield_expr.argument);
+            break;
         case AST_ARRAY_LITERAL:
             ast_list_free(node->data.array_literal.elements);
             break;
@@ -1314,6 +1509,10 @@ void ast_free(ASTNode *node) {
         case AST_PROPERTY:
             free(node->data.property.key.name);
             ast_free(node->data.property.value);
+            break;
+        case AST_COMPUTED_PROP:
+            ast_free(node->data.computed_prop.key);
+            ast_free(node->data.computed_prop.value);
             break;
         case AST_SWITCH_CASE:
             ast_free(node->data.switch_case.test);
@@ -1340,7 +1539,27 @@ void ast_free(ASTNode *node) {
         case AST_REST_ELEMENT:
             ast_free(node->data.rest_element.argument);
             break;
+        case AST_SPREAD_ELEMENT:
+            ast_free(node->data.spread_element.argument);
+            break;
         case AST_ARRAY_HOLE:
+            break;
+        case AST_CLASS_DECL:
+            free(node->data.class_decl.name);
+            ast_free(node->data.class_decl.super_class);
+            ast_list_free(node->data.class_decl.body);
+            break;
+        case AST_CLASS_EXPR:
+            free(node->data.class_expr.name);
+            ast_free(node->data.class_expr.super_class);
+            ast_list_free(node->data.class_expr.body);
+            break;
+        case AST_METHOD_DEF:
+            free(node->data.method_def.name);
+            ast_free(node->data.method_def.computed_key);
+            ast_free(node->data.method_def.function);
+            break;
+        case AST_SUPER:
             break;
     }
     free(node);

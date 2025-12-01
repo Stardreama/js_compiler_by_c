@@ -1,6 +1,6 @@
 # JavaScript 编译器 ES6 拓展路线图
 
-> **最后更新**: 2025 年 11 月 30 日  
+> **最后更新**: 2025 年 12 月 1 日  
 > **目标**: 在现有 ES5 正确性的基础上，逐步补齐 ES6/ES2015 关键语法，使 `test/JavaScript_Datasets` 中的现代样例能够通过解析。
 
 ---
@@ -37,6 +37,10 @@
 
 以下章节详细拆解各里程碑。
 
+> ✅ **进展更新（2025-12-01）**：`lexer.re`、`parser_lex_adapter.c` 与 `parser.y` 已全面接入 `TOK_YIELD` 与 `TOK_ELLIPSIS`；`function`/`method` 语法可读取 `function*` 并在 AST 中通过 `is_generator` 标记。`assignment_expr*` 系列补充 `yield_expr` 分支，数组与调用实参支持 `spread_element`，`for_stmt` 新增 `for_of_stmt` 并复用 M1/M2 的 binding pattern。AST 侧新增 `AST_FOR_OF_STMT`、`AST_YIELD_EXPR`、`AST_SPREAD_ELEMENT`，`ast_traverse/ast_free/ast_print` 已覆盖。正向用例集中在 `test/es6_stage5/{for_of.js,generators.js,spread_rest.js}`，可使用 `make test ./test/es6_stage5` 或 `build.bat test test\es6_stage5` 回归。
+
+> 🔭 **下一步**：ES2015 迭代协议仍缺少 `Symbol.iterator` 以外的语义校验、对象字面量 `...spread`、`async function*`、`for-await-of` 等语法。可在 M6 或后续“ES2017+”阶段继续追加，并评估 `goodjs` 数据集里尚未覆盖的 async/await、模块语法。
+
 ---
 
 ## M0. 基础加固（准备阶段）
@@ -56,6 +60,16 @@
 - 新增 `test/es5_baseline/` 与 `test/es6_stageX/` 目录，并调整 Makefile 允许 `make test target=es6_stage1` 形式分批执行。
 
 > ✅ 完成后再切入后续特性，避免“地基不稳”。
+
+### ⚠️ 当前阻塞（2025-12-01）
+
+- **问题描述**：`test/JavaScript_Datasets/2kbjs/20150909_7d856ad2bec43b9aa4e9919b7804c1a3` 仍在 `js_parser.exe` 执行时触发 `Syntax error #1: memory exhausted`，堆栈显示反复在 `for` 头部和 `IN` 关键字附近分裂/回收 GLR 分支，导致解析在 `')'` lookahead 处耗尽内存。
+- **已尝试的修复**：
+  - 在 `parser.y` 中新增 `*_no_in` 版本的 `var_stmt/var_decl/assignment_expr`（含 `_no_obj` 分支），`for_init` 改为引用这些规则以屏蔽 `for (init; ...)` 中的 `in` 解析路径，随后同步根目录 `parser.y` 并执行 `make parser -B` 重新生成解析器。
+  - 使用 `js_parser.exe tmp/for_in_conflict.js` 验证最小复现样例 `for (x = y in z;;) {}` 已能正确接受，确认 `_no_in` 规则有效隔离了简单 case。
+  - 对失败样例重新运行 `js_parser.exe test/.../2kbjs/... > build/debug_2kbjs.log 2>&1` 获取最新 `yydebug` 轨迹，同时查看 `build/fail_output.txt` 对比分叉点。
+  - 试图通过 `bin/bin_usr/bison.exe -d -Wcounterexamples -r all -o build/generated/parser.c src/parser.y 2> build/bison_conflicts.txt` 生成新冲突报告，命令可执行但当前输出文件为空，需要进一步确认工具链路径/权限问题。
+- **下一步建议**：结合 `build/debug_2kbjs.log` 中的 cleanup 片段定位仍存在的 `IN` 相关 reduce/reduce 冲突，并确保 `bison_conflicts.txt` 成功生成后再迭代 grammar；同时考虑限制 `for_in_left` 的备选（拆分 `for-in` / `for-of` 语法），以缩小 GLR 搜索空间。
 
 ---
 
@@ -138,9 +152,9 @@
 
 4. **测试**
 
-- `test/es6_stage3/template_basic.js`, `template_tagged.js`, `template_asi.js` 等。
+- `test/es6_stage3/tpl_basic.js`, `tpl_tagged.js`, `tpl_usage.js`, `tpl_asi.js`，以及负例 `test_error_template_expression.js` 等。
 
-> ✅ **进展更新（2025-12-02）**：`ast.[ch]` 与 `parser.y` 已实现 `AST_TEMPLATE_LITERAL`/`AST_TAGGED_TEMPLATE` 节点，并复用 `member_expr`/`call_expr` 支持 tagged templates。新回归用例位于 `test/es6_stage3/template_basic.js` 与 `test/es6_stage3/template_tagged.js`，覆盖插值、嵌套字符串及调用表达式为 tag 的场景。
+> ✅ **进展更新（2025-12-02）**：`ast.[ch]` 与 `parser.y` 已实现 `AST_TEMPLATE_LITERAL`/`AST_TAGGED_TEMPLATE` 节点，并复用 `member_expr`/`call_expr` 支持 tagged templates。新回归用例位于 `test/es6_stage3/tpl_basic.js` 与 `test/es6_stage3/tpl_tagged.js`，覆盖插值、嵌套字符串及调用表达式为 tag 的场景。
 
 ---
 
@@ -169,7 +183,15 @@
 
 5. **测试**
 
-- `test/es6_stage4/class_basic.js`, `class_inheritance.js`, `object_literal_enhancement.js`。
+- `test/es6_stage4/class_basic.js`, `class_inheritance.js`, `class_expression.js`, `class_super_usage.js`, `object_literal_enhancement.js`, `object_literal_variants.js`。
+
+> ✅ **进展更新（2025-12-03）**：`parser.y` 已实现类体 `class_element`、方法/访问器、静态修饰符与计算属性键，`ast.[ch]` 中的 `AST_METHOD_DEF`/`AST_COMPUTED_PROP` 全面启用。对应正向用例位于 `test/es6_stage4/`，覆盖继承、`super`、静态 getter/setter 以及对象字面量的计算属性与访问器，`docs/parser.md` 第 12 节同步记录了特性说明。
+
+> 🔄 **待补项（阻塞进入 M5）**：
+>
+> - [ ] **文档对齐**：`docs/parser.md`、`docs/es6_limitations.md` 需补充类/对象增强后的语义限制（如尚未实现静态字段、`super.prop = expr` 赋值行为）以及 `yydebug`/GLR 调试指引，便于后续贡献者排查。同步更新 `README` 能力矩阵，说明“类声明可解析，但尚未验证生成阶段”。
+> - [ ] **样例扩展**：除 `test/es6_stage4/*.js` 外，还需收集 `goodjs` 中最常见的类写法（例如带 `async` 方法、链式 `super()` 调用、嵌套对象字面量）并转写为最小 repro，归档到 `test/es6_stage4/additional_cases/`，避免只覆盖 happy path。
+> - [ ] **回归基线**：`make test ./test/es6_stage4` 已于 2025-12-01 通过，但 `make test ./test/JavaScript_Datasets/goodjs` 仍然存在未列出的失败（部分源于尚未支持的 `for-of`/`async` 语法）。需在 `build/test_failures.log` 中标注失败原因 & 所属里程碑，并在清单中打勾后再启动 M5。
 
 ---
 
@@ -195,7 +217,7 @@
 
 4. **测试**
 
-- `test/es6_stage5/for_of.js`, `generators.js`, `spread.js`, `rest_in_objects.js`。
+- `test/es6_stage5/for_of.js`, `for_of_bindings.js`, `generators.js`, `generator_methods.js`, `spread_rest.js`, `spread_calls.js`，以及负例 `test_error_yield_newline.js`, `test_error_for_of_initializer.js`。
 
 ---
 
@@ -332,7 +354,7 @@
 | P2       | AST 构建 | 6        | 6      | 0      | 0      | 100%    |
 | P3       | 语句扩展 | 6        | 6      | 0      | 0      | 100%    |
 | P4       | 运算符   | 5        | 5      | 0      | 0      | 100%    |
-| P5       | 高级特性 | 7        | 0      | 0      | 7      | 0%      |
+| P5       | 高级特性 | 7        | 4      | 0      | 3      | 57%     |
 | **总计** |          | **28**   | **21** | **0**  | **7**  | **75%** |
 
 ---

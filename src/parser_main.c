@@ -77,9 +77,10 @@ int main(int argc, char **argv) {
 
     parser_reset_error_count();
     parser_set_input(input);
-    if (getenv("JS_PARSER_TRACE")) {
-        yydebug = 1;
-    }
+    // if (getenv("JS_PARSER_TRACE")) {
+    //     yydebug = 1;
+    // }
+
 
     int rc = yyparse();
     ASTNode *root = parser_take_ast();

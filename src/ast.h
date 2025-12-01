@@ -17,6 +17,7 @@ typedef enum
     AST_IF_STMT,
     AST_FOR_STMT,
     AST_FOR_IN_STMT,
+    AST_FOR_OF_STMT,
     AST_WHILE_STMT,
     AST_DO_WHILE_STMT,
     AST_SWITCH_STMT,
@@ -43,6 +44,7 @@ typedef enum
     AST_UPDATE_EXPR,
     AST_CALL_EXPR,
     AST_MEMBER_EXPR,
+    AST_YIELD_EXPR,
     AST_ARRAY_LITERAL,
     AST_OBJECT_LITERAL,
     AST_PROPERTY,
@@ -53,8 +55,22 @@ typedef enum
     AST_ARRAY_BINDING,
     AST_BINDING_PROPERTY,
     AST_REST_ELEMENT,
-    AST_ARRAY_HOLE
+    AST_SPREAD_ELEMENT,
+    AST_ARRAY_HOLE,
+    AST_CLASS_DECL,
+    AST_CLASS_EXPR,
+    AST_METHOD_DEF,
+    AST_SUPER,
+    AST_COMPUTED_PROP
 } ASTNodeType;
+
+typedef enum
+{
+    AST_METHOD_KIND_NORMAL,
+    AST_METHOD_KIND_GET,
+    AST_METHOD_KIND_SET,
+    AST_METHOD_KIND_CONSTRUCTOR
+} ASTMethodKind;
 
 typedef enum
 {
@@ -129,12 +145,14 @@ struct ASTNode
             char *name;
             ASTList *params;
             ASTNode *body;
+            bool is_generator;
         } function_decl;
         struct
         {
             char *name;
             ASTList *params;
             ASTNode *body;
+            bool is_generator;
         } function_expr;
         struct
         {
@@ -165,6 +183,12 @@ struct ASTNode
             ASTNode *obj;
             ASTNode *body;
         } for_in_stmt;
+        struct
+        {
+            ASTNode *init;
+            ASTNode *iterable;
+            ASTNode *body;
+        } for_of_stmt;
         struct
         {
             ASTNode *test;
@@ -280,6 +304,11 @@ struct ASTNode
         } member_expr;
         struct
         {
+            ASTNode *argument;
+            bool is_delegate;
+        } yield_expr;
+        struct
+        {
             ASTList *elements;
         } array_literal;
         struct
@@ -327,7 +356,41 @@ struct ASTNode
         } rest_element;
         struct
         {
+            ASTNode *argument;
+        } spread_element;
+        struct
+        {
         } array_hole;
+        struct
+        {
+            char *name;
+            ASTNode *super_class;
+            ASTList *body;
+        } class_decl;
+        struct
+        {
+            char *name;
+            ASTNode *super_class;
+            ASTList *body;
+        } class_expr;
+        struct
+        {
+            char *name;
+            ASTNode *computed_key;
+            bool computed;
+            bool is_static;
+            bool is_generator;
+            ASTMethodKind kind;
+            ASTNode *function;
+        } method_def;
+        struct
+        {
+        } super_expr;
+        struct
+        {
+            ASTNode *key;
+            ASTNode *value;
+        } computed_prop;
     } data;
 };
 
@@ -348,6 +411,7 @@ ASTNode *ast_make_return(ASTNode *argument);
 ASTNode *ast_make_if(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
 ASTNode *ast_make_for(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body);
 ASTNode *ast_make_for_in(ASTNode *init, ASTNode *obj, ASTNode *body);
+ASTNode *ast_make_for_of(ASTNode *init, ASTNode *iterable, ASTNode *body);
 ASTNode *ast_make_while(ASTNode *test, ASTNode *body);
 ASTNode *ast_make_do_while(ASTNode *body, ASTNode *test);
 ASTNode *ast_make_switch(ASTNode *discriminant, ASTList *cases);
@@ -383,15 +447,22 @@ ASTNode *ast_make_new_expr(ASTNode *callee, ASTList *arguments);
 ASTNode *ast_make_update(const char *op, ASTNode *argument, bool prefix);
 ASTNode *ast_make_call(ASTNode *callee, ASTList *arguments);
 ASTNode *ast_make_member(ASTNode *object, ASTNode *property, bool computed);
+ASTNode *ast_make_yield(ASTNode *argument, bool is_delegate);
 ASTNode *ast_make_array_literal(ASTList *elements);
 ASTNode *ast_make_object_literal(ASTList *properties);
 ASTNode *ast_make_property(char *key, bool is_identifier, ASTNode *value);
+ASTNode *ast_make_computed_property(ASTNode *key, ASTNode *value);
 ASTNode *ast_make_binding_pattern(ASTNode *target, ASTNode *initializer);
 ASTNode *ast_make_object_binding(ASTList *properties);
 ASTNode *ast_make_array_binding(ASTList *elements);
 ASTNode *ast_make_binding_property(char *key, bool is_identifier, ASTNode *value, bool is_shorthand);
 ASTNode *ast_make_rest_element(ASTNode *argument);
+ASTNode *ast_make_spread_element(ASTNode *argument);
 ASTNode *ast_make_array_hole(void);
+ASTNode *ast_make_class_decl(char *name, ASTNode *super_class, ASTList *body);
+ASTNode *ast_make_class_expr(char *name, ASTNode *super_class, ASTList *body);
+ASTNode *ast_make_method_def(char *name, ASTNode *computed_key, bool computed, bool is_static, bool is_generator, ASTMethodKind kind, ASTNode *function);
+ASTNode *ast_make_super_expr(void);
 
 void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata);
 void ast_print(const ASTNode *node);

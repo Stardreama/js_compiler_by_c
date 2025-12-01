@@ -35,6 +35,10 @@ typedef enum
     TOK_VOID,
     TOK_WITH,
     TOK_DEBUGGER,
+    TOK_CLASS,
+    TOK_EXTENDS,
+    TOK_SUPER,
+    TOK_YIELD,
 
     // 字面量
     TOK_TRUE,
@@ -144,6 +148,7 @@ typedef struct
     PrevTokenState prev_tok_state; // 前Token状态
     bool in_template_expression;
     int template_expr_depth;
+    int template_nesting_depth;
 } Lexer;
 
 // 函数声明

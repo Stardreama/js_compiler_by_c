@@ -41,7 +41,7 @@ static int g_brace_top = 0;
 static bool g_pending_function_body = false;
 
 static bool is_control_keyword(int token) {
-    return token == IF || token == FOR || token == WHILE || token == WITH || token == SWITCH;
+    return token == IF || token == FOR || token == WHILE || token == WITH || token == SWITCH || token == CATCH;
 }
 
 static void push_control_paren(void) {
@@ -164,7 +164,25 @@ static void update_token_state(int token) {
 }
 
 static bool is_restricted_token(int token) {
-    return token == RETURN || token == BREAK || token == CONTINUE || token == THROW;
+    return token == RETURN || token == BREAK || token == CONTINUE || token == THROW || token == YIELD;
+}
+
+static bool newline_allowed_after_yield(int next_token, bool is_eof) {
+    if (is_eof) {
+        return true;
+    }
+
+    switch (next_token) {
+        case ';':
+        case '}':
+        case ')':
+        case ']':
+        case ',':
+        case ':':
+            return true;
+        default:
+            return false;
+    }
 }
 
 static bool can_end_statement(int token) {
@@ -191,8 +209,13 @@ static bool can_end_statement(int token) {
     }
 }
 
-static bool suppress_newline_insertion(int token) {
-    return token == '(' || token == '[' || token == '.' || token == ARROW;
+static bool paren_starts_function_literal(void);
+
+static bool suppress_newline_insertion(int token, bool paren_is_function_literal) {
+    if (token == '(') {
+        return !paren_is_function_literal;
+    }
+    return token == '[' || token == ')' || token == '.' || token == ARROW;
 }
 
 static bool in_statement_context(void) {
@@ -221,7 +244,7 @@ static bool in_statement_context(void) {
     }
 }
 
-static bool should_insert_semicolon(int last_token, bool last_closed_control, bool last_token_closed_function, bool last_token_closed_paren, int next_token, bool newline_before, bool is_eof) {
+static bool should_insert_semicolon(int last_token, bool last_closed_control, bool last_token_closed_function, bool last_token_closed_paren, int next_token, bool newline_before, bool is_eof, bool next_starts_function_literal) {
     if (last_token <= 0) {
         return false;
     }
@@ -230,8 +253,14 @@ static bool should_insert_semicolon(int last_token, bool last_closed_control, bo
         return false;
     }
 
-    if (last_closed_control || last_token_closed_function) {
+    if (last_closed_control) {
         return false;
+    }
+
+    if (last_token_closed_function) {
+        if (next_token == '{' || next_token == '(' || next_token == '[' || next_token == '.') {
+            return false;
+        }
     }
 
     if (last_token_closed_paren && next_token == ARROW) {
@@ -262,17 +291,20 @@ static bool should_insert_semicolon(int last_token, bool last_closed_control, bo
     }
 
     if (next_token == '}') {
-        bool is_block_closing = true;
         if (g_brace_top > 0) {
-            is_block_closing = (g_brace_stack[g_brace_top - 1] == BRACE_BLOCK);
-        }
-        if (!is_block_closing) {
-            return false;
+            BraceKind kind = g_brace_stack[g_brace_top - 1];
+            if (kind == BRACE_OBJECT) {
+                return false; // object literal braces stay within expressions
+            }
         }
         return true;
     }
 
-    if (newline_before && !suppress_newline_insertion(next_token) && next_token != ';') {
+    if (newline_before && next_token == '(' && next_starts_function_literal) {
+        return true;
+    }
+
+    if (newline_before && !suppress_newline_insertion(next_token, next_starts_function_literal) && next_token != ';') {
         return true;
     }
 
@@ -309,6 +341,10 @@ static int convert_token_type(TokenType type) {
         case TOK_VOID:       return VOID;
         case TOK_WITH:       return WITH;
         case TOK_DEBUGGER:   return DEBUGGER;
+        case TOK_CLASS:      return CLASS;
+        case TOK_EXTENDS:    return EXTENDS;
+        case TOK_SUPER:      return SUPER;
+        case TOK_YIELD:      return YIELD;
 
         case TOK_TRUE:       return TRUE;
         case TOK_FALSE:      return FALSE;
@@ -457,6 +493,14 @@ static bool lookahead_is_arrow_head(void) {
     return false;
 }
 
+static bool paren_starts_function_literal(void) {
+    Lexer snapshot = g_lexer;
+    Token next = lexer_next_token(&snapshot);
+    bool starts_function = (next.type == TOK_FUNCTION);
+    token_free(&next);
+    return starts_function;
+}
+
 // 由 parser_main.c 调用，设置输入缓冲区
 void parser_set_input(const char *input) {
     lexer_init(&g_lexer, input);
@@ -537,7 +581,16 @@ int yylex(void) {
             has_semantic = false;
         }
 
-        if (should_insert_semicolon(g_last_token, g_last_token_closed_control, g_last_token_closed_function, g_last_token_closed_paren, mapped, newline_before, is_eof)) {
+        bool next_starts_function_literal = false;
+        if (mapped == '(') {
+            next_starts_function_literal = paren_starts_function_literal();
+        }
+
+        if (g_last_token == YIELD && newline_before && !newline_allowed_after_yield(mapped, is_eof)) {
+            yyerror("LineTerminator not allowed after 'yield'");
+        }
+
+        if (should_insert_semicolon(g_last_token, g_last_token_closed_control, g_last_token_closed_function, g_last_token_closed_paren, mapped, newline_before, is_eof, next_starts_function_literal)) {
             pending_push(mapped, &semantic, has_semantic, false);
             update_token_state(';');
             memset(&yylval, 0, sizeof(yylval));
