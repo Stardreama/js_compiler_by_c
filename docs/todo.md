@@ -140,6 +140,8 @@
 
 - `test/es6_stage3/template_basic.js`, `template_tagged.js`, `template_asi.js` 等。
 
+> ✅ **进展更新（2025-12-02）**：`ast.[ch]` 与 `parser.y` 已实现 `AST_TEMPLATE_LITERAL`/`AST_TAGGED_TEMPLATE` 节点，并复用 `member_expr`/`call_expr` 支持 tagged templates。新回归用例位于 `test/es6_stage3/template_basic.js` 与 `test/es6_stage3/template_tagged.js`，覆盖插值、嵌套字符串及调用表达式为 tag 的场景。
+
 ---
 
 ## M4. 类、增强对象字面量与 super

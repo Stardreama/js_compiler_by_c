@@ -360,6 +360,31 @@ ASTNode *ast_make_undefined_literal(void) {
     return node;
 }
 
+ASTNode *ast_make_template_element(char *raw, bool is_tail) {
+    ASTNode *node = ast_alloc(AST_TEMPLATE_ELEMENT);
+    if (raw) {
+        node->data.template_element.raw = raw;
+    } else {
+        node->data.template_element.raw = (char *)calloc(1, sizeof(char));
+    }
+    node->data.template_element.is_tail = is_tail;
+    return node;
+}
+
+ASTNode *ast_make_template_literal(ASTList *quasis, ASTList *expressions) {
+    ASTNode *node = ast_alloc(AST_TEMPLATE_LITERAL);
+    node->data.template_literal.quasis = quasis;
+    node->data.template_literal.expressions = expressions;
+    return node;
+}
+
+ASTNode *ast_make_tagged_template(ASTNode *tag, ASTNode *template_literal) {
+    ASTNode *node = ast_alloc(AST_TAGGED_TEMPLATE);
+    node->data.tagged_template.tag = tag;
+    node->data.tagged_template.template_literal = template_literal;
+    return node;
+}
+
 ASTNode *ast_make_assignment(const char *op, ASTNode *left, ASTNode *right) {
     ASTNode *node = ast_alloc(AST_ASSIGN_EXPR);
     node->data.assign.op = op;
@@ -561,6 +586,16 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             break;
         case AST_EXPR_STMT:
             ast_traverse(node->data.expr_stmt.expression, visitor, userdata);
+            break;
+        case AST_TEMPLATE_LITERAL:
+            ast_traverse_list(node->data.template_literal.quasis, visitor, userdata);
+            ast_traverse_list(node->data.template_literal.expressions, visitor, userdata);
+            break;
+        case AST_TAGGED_TEMPLATE:
+            ast_traverse(node->data.tagged_template.tag, visitor, userdata);
+            ast_traverse(node->data.tagged_template.template_literal, visitor, userdata);
+            break;
+        case AST_TEMPLATE_ELEMENT:
             break;
         case AST_ASSIGN_EXPR:
             ast_traverse(node->data.assign.left, visitor, userdata);
@@ -893,6 +928,36 @@ static void ast_print_internal(const ASTNode *node, int indent) {
                     break;
             }
             break;
+        case AST_TEMPLATE_LITERAL:
+            print_indent(indent);
+            printf("TemplateLiteral\n");
+            if (node->data.template_literal.quasis) {
+                print_indent(indent + 2);
+                printf("Quasis\n");
+                ast_print_list(node->data.template_literal.quasis, indent + 4);
+            }
+            if (node->data.template_literal.expressions) {
+                print_indent(indent + 2);
+                printf("Expressions\n");
+                ast_print_list(node->data.template_literal.expressions, indent + 4);
+            }
+            break;
+        case AST_TEMPLATE_ELEMENT:
+            print_indent(indent);
+            printf("TemplateElement value=\"%s\" tail=%s\n",
+                   node->data.template_element.raw ? node->data.template_element.raw : "",
+                   node->data.template_element.is_tail ? "true" : "false");
+            break;
+        case AST_TAGGED_TEMPLATE:
+            print_indent(indent);
+            printf("TaggedTemplateExpression\n");
+            print_indent(indent + 2);
+            printf("Tag\n");
+            ast_print_internal(node->data.tagged_template.tag, indent + 4);
+            print_indent(indent + 2);
+            printf("Template\n");
+            ast_print_internal(node->data.tagged_template.template_literal, indent + 4);
+            break;
         case AST_ASSIGN_EXPR:
             print_indent(indent);
             printf("AssignmentExpression op=%s\n", node->data.assign.op ? node->data.assign.op : "=");
@@ -1194,6 +1259,17 @@ void ast_free(ASTNode *node) {
                 || node->data.literal.literal_type == AST_LITERAL_REGEX) {
                 free(node->data.literal.value.string);
             }
+            break;
+        case AST_TEMPLATE_LITERAL:
+            ast_list_free(node->data.template_literal.quasis);
+            ast_list_free(node->data.template_literal.expressions);
+            break;
+        case AST_TEMPLATE_ELEMENT:
+            free(node->data.template_element.raw);
+            break;
+        case AST_TAGGED_TEMPLATE:
+            ast_free(node->data.tagged_template.tag);
+            ast_free(node->data.tagged_template.template_literal);
             break;
         case AST_ASSIGN_EXPR:
             ast_free(node->data.assign.left);

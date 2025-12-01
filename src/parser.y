@@ -16,29 +16,6 @@ void yyerror(const char *s);
 static ASTNode *g_parser_ast_root = NULL;
 static int g_parser_error_count = 0;
 
-static ASTNode *make_template_string_node(char *text) {
-    return ast_make_string_literal_raw(text);
-}
-
-static ASTNode *build_template_concatenation(ASTList *parts) {
-    ASTNode *result = NULL;
-    ASTList *iter = parts;
-    while (iter) {
-        if (!result) {
-            result = iter->node;
-        } else {
-            result = ast_make_binary("+", result, iter->node);
-        }
-        ASTList *next = iter->next;
-        free(iter);
-        iter = next;
-    }
-    if (!result) {
-        return ast_make_string_literal_raw(NULL);
-    }
-    return result;
-}
-
 static ASTNode *wrap_destructuring_target(ASTNode *target) {
     if (!target) {
         return NULL;
@@ -68,6 +45,10 @@ static ASTNode *wrap_destructuring_target(ASTNode *target) {
         ASTNode *body;
         bool is_expression;
     } arrow;
+    struct {
+        ASTList *quasis;
+        ASTList *exprs;
+    } template_parts;
 }
 
 %token VAR LET CONST FUNCTION FUNCTION_DECL IF ELSE FOR RETURN
@@ -113,7 +94,8 @@ static ASTNode *wrap_destructuring_target(ASTNode *target) {
 
 %type <str> property_name property_name_keyword
 
-%type <list> stmt_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list template_part_list binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list
+%type <list> stmt_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list
+%type <template_parts> template_part_list
 
 %%
 
@@ -572,6 +554,8 @@ member_expr
       { $$ = ast_make_member($1, ast_make_identifier($3), false); }
   | member_expr '[' expr ']'
       { $$ = ast_make_member($1, $3, true); }
+  | member_expr template_literal
+      { $$ = ast_make_tagged_template($1, $2); }
   | NEW member_expr
       { $$ = ast_make_new_expr($2, NULL); }
   | NEW member_expr '(' opt_arg_list ')'
@@ -587,6 +571,8 @@ call_expr
       { $$ = ast_make_member($1, ast_make_identifier($3), false); }
   | call_expr '[' expr ']'
       { $$ = ast_make_member($1, $3, true); }
+  | call_expr template_literal
+      { $$ = ast_make_tagged_template($1, $2); }
   ;
 
 opt_arg_list
@@ -863,6 +849,8 @@ member_expr_no_obj
       { $$ = ast_make_member($1, ast_make_identifier($3), false); }
   | member_expr_no_obj '[' expr ']'
       { $$ = ast_make_member($1, $3, true); }
+  | member_expr_no_obj template_literal
+      { $$ = ast_make_tagged_template($1, $2); }
   | NEW member_expr_no_obj
       { $$ = ast_make_new_expr($2, NULL); }
   | NEW member_expr_no_obj '(' opt_arg_list ')'
@@ -878,6 +866,8 @@ call_expr_no_obj
       { $$ = ast_make_member($1, ast_make_identifier($3), false); }
   | call_expr_no_obj '[' expr ']'
       { $$ = ast_make_member($1, $3, true); }
+  | call_expr_no_obj template_literal
+      { $$ = ast_make_tagged_template($1, $2); }
   ;
 
 primary_no_obj
@@ -939,30 +929,40 @@ object_literal
 
 template_literal
   : TEMPLATE_NO_SUB
-      { $$ = make_template_string_node($1); }
+      {
+          ASTList *quasis = NULL;
+          quasis = ast_list_append(quasis, ast_make_template_element($1, true));
+          $$ = ast_make_template_literal(quasis, NULL);
+      }
   | TEMPLATE_HEAD template_part_list
       {
-          ASTList *parts = NULL;
-          parts = ast_list_append(parts, make_template_string_node($1));
-          parts = ast_list_concat(parts, $2);
-          $$ = build_template_concatenation(parts);
+          ASTList *quasis = NULL;
+          quasis = ast_list_append(quasis, ast_make_template_element($1, false));
+          quasis = ast_list_concat(quasis, $2.quasis);
+          $$ = ast_make_template_literal(quasis, $2.exprs);
       }
   ;
 
 template_part_list
   : assignment_expr TEMPLATE_TAIL
       {
-          ASTList *parts = NULL;
-          parts = ast_list_append(parts, $1);
-          parts = ast_list_append(parts, make_template_string_node($2));
-          $$ = parts;
+          ASTList *exprs = NULL;
+          ASTList *quasis = NULL;
+          exprs = ast_list_append(exprs, $1);
+          quasis = ast_list_append(quasis, ast_make_template_element($2, true));
+          $$.exprs = exprs;
+          $$.quasis = quasis;
       }
   | assignment_expr TEMPLATE_MIDDLE template_part_list
       {
-          ASTList *parts = NULL;
-          parts = ast_list_append(parts, $1);
-          parts = ast_list_append(parts, make_template_string_node($2));
-          $$ = ast_list_concat(parts, $3);
+          ASTList *exprs = NULL;
+          ASTList *quasis = NULL;
+          exprs = ast_list_append(exprs, $1);
+          exprs = ast_list_concat(exprs, $3.exprs);
+          quasis = ast_list_append(quasis, ast_make_template_element($2, false));
+          quasis = ast_list_concat(quasis, $3.quasis);
+          $$.exprs = exprs;
+          $$.quasis = quasis;
       }
   ;
 

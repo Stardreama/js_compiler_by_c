@@ -31,6 +31,9 @@ typedef enum
     AST_IDENTIFIER,
     AST_THIS,
     AST_LITERAL,
+    AST_TEMPLATE_LITERAL,
+    AST_TEMPLATE_ELEMENT,
+    AST_TAGGED_TEMPLATE,
     AST_ASSIGN_EXPR,
     AST_BINARY_EXPR,
     AST_CONDITIONAL_EXPR,
@@ -97,6 +100,21 @@ struct ASTNode
         {
             ASTList *body;
         } block;
+        struct
+        {
+            ASTList *quasis;
+            ASTList *expressions;
+        } template_literal;
+        struct
+        {
+            char *raw;
+            bool is_tail;
+        } template_element;
+        struct
+        {
+            ASTNode *tag;
+            ASTNode *template_literal;
+        } tagged_template;
         struct
         {
             ASTNode *binding;
@@ -353,6 +371,9 @@ ASTNode *ast_make_regex_literal(char *raw);
 ASTNode *ast_make_boolean_literal(bool value);
 ASTNode *ast_make_null_literal(void);
 ASTNode *ast_make_undefined_literal(void);
+ASTNode *ast_make_template_literal(ASTList *quasis, ASTList *expressions);
+ASTNode *ast_make_template_element(char *raw, bool is_tail);
+ASTNode *ast_make_tagged_template(ASTNode *tag, ASTNode *template_literal);
 ASTNode *ast_make_assignment(const char *op, ASTNode *left, ASTNode *right);
 ASTNode *ast_make_binary(const char *op, ASTNode *left, ASTNode *right);
 ASTNode *ast_make_conditional(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
