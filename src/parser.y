@@ -281,6 +281,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %glr-parser
 %define parse.error verbose
 %define parse.trace true
+%debug
 %right '=' PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN SLASH_ASSIGN PERCENT_ASSIGN AND_ASSIGN OR_ASSIGN XOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN URSHIFT_ASSIGN
 %right '?' ':'
 %left OR
@@ -295,6 +296,8 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %left '*' '/' '%'
 %right NEW
 %right UMINUS '!' '~' TYPEOF DELETE VOID PLUS_PLUS MINUS_MINUS
+%nonassoc IF_NO_ELSE
+%nonassoc ELSE
 
 %type <node> program module_item stmt block var_stmt var_stmt_no_in return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init for_in_left opt_expr catch_clause finally_clause finally_clause_opt switch_case var_decl var_decl_no_in class_decl class_expr class_element method_definition getter_definition setter_definition computed_property class_heritage_opt import_stmt export_stmt import_default_binding namespace_import import_specifier module_specifier export_specifier
 %type <node> expr assignment_expr assignment_expr_no_pattern conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr shift_expr additive_expr multiplicative_expr unary_expr postfix_expr postfix_expr_no_arr left_hand_side_expr left_hand_side_expr_no_arr call_expr call_expr_no_arr member_expr member_expr_no_arr new_expr new_expr_no_arr primary_expr primary_no_arr function_expr template_literal
@@ -312,7 +315,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %type <str> for_of_keyword from_keyword as_keyword
 
 
-%type <list> stmt_list module_item_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list var_decl_list_no_in binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list class_body class_element_list class_element_list_opt import_clause named_imports import_specifier_list import_specifier_list_opt export_clause export_specifier_list export_specifier_list_opt
+%type <list> stmt_list module_item_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list var_decl_list_no_in binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list class_body class_element_list class_element_list_opt import_clause named_imports import_specifier_list export_clause export_specifier_list
 %type <template_parts> template_part_list
 %type <boolean> generator_marker_opt async_modifier_opt
 
@@ -409,16 +412,11 @@ import_clause
   ;
 
 named_imports
-  : '{' import_specifier_list_opt '}'
-      { $$ = $2; }
-  ;
-
-import_specifier_list_opt
-  : /* empty */
-      { $$ = NULL; }
-  | import_specifier_list
-      { $$ = $1; }
-  ;
+    : '{' '}'
+            { $$ = NULL; }
+    | '{' import_specifier_list opt_trailing_comma '}'
+            { $$ = $2; }
+    ;
 
 import_specifier_list
   : import_specifier
@@ -475,16 +473,11 @@ export_stmt
   ;
 
 export_clause
-  : '{' export_specifier_list_opt '}'
-      { $$ = $2; }
-  ;
-
-export_specifier_list_opt
-  : /* empty */
-      { $$ = NULL; }
-  | export_specifier_list
-      { $$ = $1; }
-  ;
+    : '{' '}'
+            { $$ = NULL; }
+    | '{' export_specifier_list opt_trailing_comma '}'
+            { $$ = $2; }
+    ;
 
 export_specifier_list
   : export_specifier
@@ -597,8 +590,8 @@ return_stmt
   ;
 
 if_stmt
-  : IF '(' expr ')' stmt
-      { $$ = ast_make_if($3, $5, NULL); }
+    : IF '(' expr ')' stmt %prec IF_NO_ELSE
+            { $$ = ast_make_if($3, $5, NULL); }
   | IF '(' expr ')' stmt ELSE stmt
       { $$ = ast_make_if($3, $5, $7); }
   ;
@@ -1738,34 +1731,10 @@ call_expr_no_obj_no_arr
   ;
 
 primary_no_obj
-  : IDENTIFIER
-      { $$ = ast_make_identifier($1); }
-  | THIS
-        { $$ = ast_make_this_expr(); }
-    | SUPER
-                { $$ = ast_make_super_expr(); }
-  | NUMBER
-      { $$ = ast_make_number_literal($1); }
-  | STRING
-      { $$ = ast_make_string_literal($1); }
-  | REGEX
-      { $$ = ast_make_regex_literal($1); }
-  | TRUE
-      { $$ = ast_make_boolean_literal(true); }
-  | FALSE
-      { $$ = ast_make_boolean_literal(false); }
-  | NULL_T
-      { $$ = ast_make_null_literal(); }
-  | UNDEFINED
-      { $$ = ast_make_undefined_literal(); }
-  | '(' expr ')'
-      { $$ = $2; }
+  : primary_no_obj_no_arr
+      { $$ = $1; }
   | array_literal
       { $$ = $1; }
-  | template_literal
-      { $$ = $1; }
-  | function_expr
-        { $$ = $1; }
   ;
 
 primary_no_obj_no_arr
