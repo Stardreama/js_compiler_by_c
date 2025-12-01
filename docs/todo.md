@@ -39,6 +39,8 @@
 
 > ✅ **进展更新（2025-12-01）**：`lexer.re`、`parser_lex_adapter.c` 与 `parser.y` 已全面接入 `TOK_YIELD` 与 `TOK_ELLIPSIS`；`function`/`method` 语法可读取 `function*` 并在 AST 中通过 `is_generator` 标记。`assignment_expr*` 系列补充 `yield_expr` 分支，数组与调用实参支持 `spread_element`，`for_stmt` 新增 `for_of_stmt` 并复用 M1/M2 的 binding pattern。AST 侧新增 `AST_FOR_OF_STMT`、`AST_YIELD_EXPR`、`AST_SPREAD_ELEMENT`，`ast_traverse/ast_free/ast_print` 已覆盖。正向用例集中在 `test/es6_stage5/{for_of.js,generators.js,spread_rest.js}`，可使用 `make test ./test/es6_stage5` 或 `build.bat test test\es6_stage5` 回归。
 
+> ✅ **阶段回归（2025-12-02）**：`make test ./test/es6_stage1` 至 `./test/es6_stage6` 已完成全量执行，产出的捕获性错误均为预期负例（例如 `test_error_arrow_newline.js`、`test_error_for_of_initializer.js` 等）。当前 ES6 分阶段用例 38/38 通过，可作为后续迭代的基准线；若新增语法，请同步扩展对应 `es6_stageX` 套件并复跑六个阶段。
+
 > 🔭 **下一步**：ES2015 迭代协议仍缺少 `Symbol.iterator` 以外的语义校验、对象字面量 `...spread`、`async function*`、`for-await-of` 等语法。可在 M6 或后续“ES2017+”阶段继续追加，并评估 `goodjs` 数据集里尚未覆盖的 async/await、模块语法。
 
 ---
