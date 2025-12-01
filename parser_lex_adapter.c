@@ -8,6 +8,8 @@
 #include "parser.h"  // 由 bison -d 生成，包含 VAR/LET/... 等 token 定义
 #include "diagnostics.h"
 
+extern void yyerror(const char *s);
+
 static Lexer g_lexer;
 static int g_initialized = 0;
 static int g_last_token = 0;
@@ -171,7 +173,7 @@ static bool can_end_statement(int token) {
 }
 
 static bool suppress_newline_insertion(int token) {
-    return token == '(' || token == '[' || token == '.';
+    return token == '(' || token == '[' || token == '.' || token == ARROW;
 }
 
 static bool should_insert_semicolon(int last_token, bool last_closed_control, bool last_token_closed_function, int next_token, bool newline_before, bool is_eof) {
@@ -408,6 +410,10 @@ int yylex(void) {
             update_token_state(';');
             memset(&yylval, 0, sizeof(yylval));
             return ';';
+        }
+
+        if (mapped == ARROW && newline_before) {
+            yyerror("LineTerminator not allowed before '=>'");
         }
 
         if (has_semantic) {

@@ -1,0 +1,1 @@
+const pickRest = ({ ...rest }) => rest;

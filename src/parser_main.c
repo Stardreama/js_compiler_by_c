@@ -7,6 +7,7 @@
 
 // bison 生成的解析函数
 int yyparse(void);
+extern int yydebug;
 
 // 适配层提供：设置输入缓冲区
 void parser_set_input(const char *input);
@@ -76,6 +77,9 @@ int main(int argc, char **argv) {
 
     parser_reset_error_count();
     parser_set_input(input);
+    if (getenv("JS_PARSER_TRACE")) {
+        yydebug = 1;
+    }
 
     int rc = yyparse();
     ASTNode *root = parser_take_ast();

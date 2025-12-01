@@ -54,6 +54,10 @@ static ASTNode *build_template_concatenation(ASTList *parts) {
     ASTNode *node;
     ASTList *list;
     char *str;
+    struct {
+        ASTNode *body;
+        bool is_expression;
+    } arrow;
 }
 
 %token VAR LET CONST FUNCTION IF ELSE FOR RETURN
@@ -90,13 +94,14 @@ static ASTNode *build_template_concatenation(ASTList *parts) {
 %type <node> program stmt block var_stmt return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init for_in_left opt_expr catch_clause finally_clause finally_clause_opt switch_case var_decl
 %type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr relational_expr_in shift_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr function_expr new_expr template_literal
 %type <node> expr_no_obj assignment_expr_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj relational_expr_no_obj_in shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
-%type <node> binding_element binding_initializer_opt object_binding array_binding binding_property binding_rest_property binding_rest_element assignment_pattern object_assignment_pattern array_assignment_pattern assignment_property assignment_element assignment_rest_element assignment_target for_binding for_binding_declarator catch_parameter
-%type <node> arrow_function arrow_body
+%type <node> binding_element binding_initializer_opt object_binding array_binding binding_property binding_rest_property binding_rest_element assignment_pattern object_assignment_pattern array_assignment_pattern assignment_property assignment_element assignment_rest_element assignment_target for_binding for_binding_declarator catch_parameter rest_param
+%type <node> arrow_function
+%type <arrow> arrow_body
 %type <node> array_literal object_literal prop
 
 %type <str> property_name property_name_keyword
 
-%type <list> stmt_list opt_param_list param_list opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list template_part_list binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list
+%type <list> stmt_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list template_part_list binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list
 
 %%
 
@@ -281,10 +286,24 @@ opt_param_list
   ;
 
 param_list
+  : param_list_items
+      { $$ = $1; }
+  | param_list_items ',' rest_param
+      { $$ = ast_list_append($1, $3); }
+  | rest_param
+      { $$ = ast_list_append(NULL, $1); }
+  ;
+
+param_list_items
   : binding_element
       { $$ = ast_list_append(NULL, $1); }
-  | param_list ',' binding_element
+  | param_list_items ',' binding_element
       { $$ = ast_list_append($1, $3); }
+  ;
+
+rest_param
+  : binding_rest_element
+      { $$ = $1; }
   ;
 
 catch_clause
@@ -640,11 +659,12 @@ arrow_function
   : IDENTIFIER ARROW arrow_body
       {
           ASTList *params = NULL;
-          params = ast_list_append(params, ast_make_identifier($1));
-          $$ = ast_make_function_expr(NULL, params, $3);
+          ASTNode *binding = ast_make_binding_pattern(ast_make_identifier($1), NULL);
+          params = ast_list_append(params, binding);
+          $$ = ast_make_arrow_function(params, $3.body, $3.is_expression);
       }
   | '(' opt_param_list ')' ARROW arrow_body
-      { $$ = ast_make_function_expr(NULL, $2, $5); }
+      { $$ = ast_make_arrow_function($2, $5.body, $5.is_expression); }
   ;
 
 arrow_body
@@ -652,10 +672,14 @@ arrow_body
       {
           ASTList *stmts = NULL;
           stmts = ast_list_append(stmts, ast_make_return($1));
-          $$ = ast_make_block(stmts);
+          $$.body = ast_make_block(stmts);
+          $$.is_expression = true;
       }
   | block
-      { $$ = $1; }
+      {
+          $$.body = $1;
+          $$.is_expression = false;
+      }
   ;
 
 conditional_expr_no_obj
@@ -904,6 +928,11 @@ prop_list
 prop
   : property_name ':' assignment_expr
       { $$ = ast_make_property($1, true, $3); }
+  | IDENTIFIER
+      {
+          ASTNode *id = ast_make_identifier($1);
+          $$ = ast_make_property(strdup(id->data.identifier.name), true, id);
+      }
   ;
 
 property_name

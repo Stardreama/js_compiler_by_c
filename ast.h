@@ -12,6 +12,7 @@ typedef enum
     AST_VAR_STMT,
     AST_FUNCTION_DECL,
     AST_FUNCTION_EXPR,
+    AST_ARROW_FUNCTION,
     AST_RETURN_STMT,
     AST_IF_STMT,
     AST_FOR_STMT,
@@ -100,7 +101,8 @@ struct ASTNode
         {
             ASTNode *binding;
         } var_decl;
-        struct {
+        struct
+        {
             ASTVarKind kind;
             ASTList *decls;
         } var_stmt;
@@ -116,6 +118,12 @@ struct ASTNode
             ASTList *params;
             ASTNode *body;
         } function_expr;
+        struct
+        {
+            ASTList *params;
+            ASTNode *body;
+            bool is_expression_body;
+        } arrow_function;
         struct
         {
             ASTNode *argument;
@@ -317,6 +325,7 @@ ASTNode *ast_make_var_decl(ASTNode *binding);
 ASTNode *ast_make_var_stmt(ASTVarKind kind, ASTList *decls);
 ASTNode *ast_make_function_decl(char *name, ASTList *params, ASTNode *body);
 ASTNode *ast_make_function_expr(char *name, ASTList *params, ASTNode *body);
+ASTNode *ast_make_arrow_function(ASTList *params, ASTNode *body, bool is_expression_body);
 ASTNode *ast_make_return(ASTNode *argument);
 ASTNode *ast_make_if(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
 ASTNode *ast_make_for(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body);

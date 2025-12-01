@@ -24,7 +24,17 @@ Syntax error #1: syntax error, unexpected ';', expecting ':'
    虽然词法层面已有 `TEMPLATE_*` token，但 AST 与语义动作尚未覆盖所有组合用法。
 
 3. **默认参数 / rest 参数（函数体内）**
-   形参列表内部可使用默认值与 `...rest`，但生成器 / async / class method 等更高阶形态仍缺失。
+   形参列表（含箭头函数）已拥抱解构 + 默认值 + `...rest` 组合；后续仍需为 generator / async / class method 提供语义差异化处理。
+
+4. **箭头函数**
+
+   - ✅ 新增 `AST_ARROW_FUNCTION` 节点区分表达式体/块体，保留 `is_expression_body` 元信息，便于 `this` 绑定及 async/generator 扩展。
+   - ⚠️ 若在 `=>` 前插入换行会立即触发语法错误，与 ECMAScript “no LineTerminator here” 规则一致；`test/es6_stage2/test_error_arrow_newline.js` 记录该限制。
+
+5. **`new` 表达式与链式调用**
+
+   - ✅ `new` 语法已重写为 `member_expr / call_expr / left_hand_side_expr` 三段式，能够正确解析 `new Image().src = ...`、`new Foo(bar).baz()` 等常见写法。`test/JavaScript_Datasets/goodjs/eb8511178bbe1d5132aa2504c710c666` 不再因为“syntax is ambiguous” 报错。
+   - ⚠️ `new.target`、`import()` 这类 ES2015+ 扩展仍未建模；若在 `goodjs` 集中遇到，可暂时通过 `docs/todo.md` 记录并等待下一阶段支持。
 
 综上，当前主干已覆盖声明类解构的高频场景，但尚未完成以下 ES6 语法：
 

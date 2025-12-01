@@ -159,6 +159,14 @@ ASTNode *ast_make_function_expr(char *name, ASTList *params, ASTNode *body){
     return node;
 }
 
+ASTNode *ast_make_arrow_function(ASTList *params, ASTNode *body, bool is_expression_body) {
+    ASTNode *node = ast_alloc(AST_ARROW_FUNCTION);
+    node->data.arrow_function.params = params;
+    node->data.arrow_function.body = body;
+    node->data.arrow_function.is_expression_body = is_expression_body;
+    return node;
+}
+
 ASTNode *ast_make_return(ASTNode *argument) {
     ASTNode *node = ast_alloc(AST_RETURN_STMT);
     node->data.return_stmt.argument = argument;
@@ -497,6 +505,11 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
         case AST_FUNCTION_EXPR:
             ast_traverse_list(node->data.function_expr.params, visitor, userdata);
             ast_traverse(node->data.function_expr.body, visitor, userdata);
+            break;
+        case AST_ARROW_FUNCTION:
+            ast_traverse_list(node->data.arrow_function.params, visitor, userdata);
+            ast_traverse(node->data.arrow_function.body, visitor, userdata);
+            break;
         case AST_RETURN_STMT:
             ast_traverse(node->data.return_stmt.argument, visitor, userdata);
             break;
@@ -700,6 +713,19 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             print_indent(indent + 2);
             printf("Body\n");
             ast_print_internal(node->data.function_expr.body, indent + 4);
+            break;
+        case AST_ARROW_FUNCTION:
+            print_indent(indent);
+            printf("ArrowFunction expressionBody=%s\n",
+                   node->data.arrow_function.is_expression_body ? "true" : "false");
+            if (node->data.arrow_function.params) {
+                print_indent(indent + 2);
+                printf("Params\n");
+                ast_print_list(node->data.arrow_function.params, indent + 4);
+            }
+            print_indent(indent + 2);
+            printf("Body\n");
+            ast_print_internal(node->data.arrow_function.body, indent + 4);
             break;
         case AST_RETURN_STMT:
             print_indent(indent);
@@ -1095,6 +1121,10 @@ void ast_free(ASTNode *node) {
             free(node->data.function_expr.name);
             ast_list_free(node->data.function_expr.params);
             ast_free(node->data.function_expr.body);
+            break;
+        case AST_ARROW_FUNCTION:
+            ast_list_free(node->data.arrow_function.params);
+            ast_free(node->data.arrow_function.body);
             break;
         case AST_RETURN_STMT:
             ast_free(node->data.return_stmt.argument);

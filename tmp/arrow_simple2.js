@@ -1,0 +1,1 @@
+const add = (a, b = 1) => a + b;

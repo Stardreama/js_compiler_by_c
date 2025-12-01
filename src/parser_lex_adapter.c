@@ -4,9 +4,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include "token.h"
 #include "parser.h"  // 由 bison -d 生成，包含 VAR/LET/... 等 token 定义
 #include "diagnostics.h"
+
+extern void yyerror(const char *s);
 
 static Lexer g_lexer;
 static int g_initialized = 0;
@@ -14,6 +17,8 @@ static int g_last_token = 0;
 static bool g_last_token_closed_control = false;
 static int g_prev_token = 0;
 static bool g_last_token_closed_function = false;
+static bool g_last_token_closed_paren = false;
+static bool g_skip_arrow_detection_once = false;
 
 // 跟踪括号层级及控制语句的条件括号，用于避免在 if(...) 等后面误插入分号
 #define CONTROL_STACK_MAX 64
@@ -27,11 +32,13 @@ static int g_paren_function_top = 0;
 
 typedef enum {
     BRACE_BLOCK,
-    BRACE_OBJECT
+    BRACE_OBJECT,
+    BRACE_FUNCTION
 } BraceKind;
 
 static BraceKind g_brace_stack[CONTROL_STACK_MAX];
 static int g_brace_top = 0;
+static bool g_pending_function_body = false;
 
 static bool is_control_keyword(int token) {
     return token == IF || token == FOR || token == WHILE || token == WITH || token == SWITCH;
@@ -60,12 +67,14 @@ static void pop_function_paren_if_needed(void) {
     if (g_paren_function_top > 0 && g_paren_function_stack[g_paren_function_top - 1] == g_paren_depth) {
         g_paren_function_top--;
         g_last_token_closed_function = true;
+        g_pending_function_body = true;
     }
 }
 
 static void update_token_state(int token) {
     g_last_token_closed_control = false;
     g_last_token_closed_function = false;
+    g_last_token_closed_paren = false;
 
     if (token == '(') {
         // 先增加深度，确保栈中记录的是“括号内”的层级
@@ -74,8 +83,10 @@ static void update_token_state(int token) {
         // 检查是否为函数头部的括号
         // 情况A: function foo (...)  -> prev: FUNCTION, last: IDENTIFIER
         // 情况B: function (...)      -> last: FUNCTION (匿名函数)
-        bool is_named_func = (g_prev_token == FUNCTION && g_last_token == IDENTIFIER);
-        bool is_anon_func  = (g_last_token == FUNCTION);
+        bool last_is_function = (g_last_token == FUNCTION || g_last_token == FUNCTION_DECL);
+        bool prev_is_function = (g_prev_token == FUNCTION || g_prev_token == FUNCTION_DECL);
+        bool is_named_func = (prev_is_function && g_last_token == IDENTIFIER);
+        bool is_anon_func  = last_is_function;
 
         if (is_named_func || is_anon_func) {
             push_function_paren(); // 现在存入的是 increment 后的深度
@@ -93,6 +104,7 @@ static void update_token_state(int token) {
             // 再检查控制语句栈
             pop_control_paren_if_needed();
             g_paren_depth--;
+            g_last_token_closed_paren = true;
         }
     } else if (token == '{') {
         bool is_block = true;
@@ -109,6 +121,7 @@ static void update_token_state(int token) {
                 case FINALLY:
                 case WITH:
                 case FUNCTION:
+                case FUNCTION_DECL:
                 case CASE:
                 case DEFAULT:
                 case ')':
@@ -130,11 +143,19 @@ static void update_token_state(int token) {
             }
         }
         if (g_brace_top < CONTROL_STACK_MAX) {
-            g_brace_stack[g_brace_top++] = is_block ? BRACE_BLOCK : BRACE_OBJECT;
+            BraceKind kind = is_block ? BRACE_BLOCK : BRACE_OBJECT;
+            if (g_pending_function_body) {
+                kind = BRACE_FUNCTION;
+                g_pending_function_body = false;
+            }
+            g_brace_stack[g_brace_top++] = kind;
         }
     } else if (token == '}') {
         if (g_brace_top > 0) {
-            g_brace_top--;
+            BraceKind kind = g_brace_stack[--g_brace_top];
+            if (kind == BRACE_FUNCTION) {
+                g_last_token_closed_function = true;
+            }
         }
     }
 
@@ -171,10 +192,36 @@ static bool can_end_statement(int token) {
 }
 
 static bool suppress_newline_insertion(int token) {
-    return token == '(' || token == '[' || token == '.';
+    return token == '(' || token == '[' || token == '.' || token == ARROW;
 }
 
-static bool should_insert_semicolon(int last_token, bool last_closed_control, bool last_token_closed_function, int next_token, bool newline_before, bool is_eof) {
+static bool in_statement_context(void) {
+    if (g_last_token == 0) {
+        return true;
+    }
+
+    if (g_last_token_closed_control) {
+        return true;
+    }
+
+    switch (g_last_token) {
+        case ';':
+        case '{':
+        case '}':
+        case ELSE:
+        case DO:
+        case FINALLY:
+        case TRY:
+        case CATCH:
+        case CASE:
+        case DEFAULT:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool should_insert_semicolon(int last_token, bool last_closed_control, bool last_token_closed_function, bool last_token_closed_paren, int next_token, bool newline_before, bool is_eof) {
     if (last_token <= 0) {
         return false;
     }
@@ -184,6 +231,10 @@ static bool should_insert_semicolon(int last_token, bool last_closed_control, bo
     }
 
     if (last_closed_control || last_token_closed_function) {
+        return false;
+    }
+
+    if (last_token_closed_paren && next_token == ARROW) {
         return false;
     }
 
@@ -332,14 +383,79 @@ static int convert_token_type(TokenType type) {
     }
 }
 
+#define PENDING_QUEUE_MAX 32
+
 typedef struct PendingToken {
     int token;
     YYSTYPE semantic;
     bool has_semantic;
-    bool valid;
+    bool skip_arrow_detection;
 } PendingToken;
 
-static PendingToken g_pending = {0};
+static PendingToken g_pending_queue[PENDING_QUEUE_MAX];
+static int g_pending_head = 0;
+static int g_pending_tail = 0;
+
+static bool pending_is_empty(void) {
+    return g_pending_head == g_pending_tail;
+}
+
+static bool pending_pop(PendingToken *out) {
+    if (pending_is_empty()) {
+        return false;
+    }
+    *out = g_pending_queue[g_pending_head];
+    g_pending_head = (g_pending_head + 1) % PENDING_QUEUE_MAX;
+    return true;
+}
+
+static void pending_push(int token, const YYSTYPE *semantic, bool has_semantic, bool skip_arrow_detection) {
+    int next_tail = (g_pending_tail + 1) % PENDING_QUEUE_MAX;
+    if (next_tail == g_pending_head) {
+        fprintf(stderr, "[parser_lex_adapter] pending queue overflow\n");
+        exit(EXIT_FAILURE);
+    }
+    PendingToken *slot = &g_pending_queue[g_pending_tail];
+    slot->token = token;
+    if (has_semantic && semantic) {
+        slot->semantic = *semantic;
+    } else {
+        memset(&slot->semantic, 0, sizeof(slot->semantic));
+    }
+    slot->has_semantic = has_semantic;
+    slot->skip_arrow_detection = skip_arrow_detection;
+    g_pending_tail = next_tail;
+}
+
+static bool lookahead_is_arrow_head(void) {
+    Lexer snapshot = g_lexer;
+    int depth = 1;
+
+    while (depth > 0) {
+        Token tk = lexer_next_token(&snapshot);
+        if (tk.type == TOK_EOF || tk.type == TOK_ERROR) {
+            token_free(&tk);
+            return false;
+        }
+
+        if (tk.type == TOK_LPAREN) {
+            depth++;
+        } else if (tk.type == TOK_RPAREN) {
+            depth--;
+            if (depth == 0) {
+                token_free(&tk);
+                Token next = lexer_next_token(&snapshot);
+                bool result = (next.type == TOK_ARROW);
+                token_free(&next);
+                return result;
+            }
+        }
+
+        token_free(&tk);
+    }
+
+    return false;
+}
 
 // 由 parser_main.c 调用，设置输入缓冲区
 void parser_set_input(const char *input) {
@@ -349,7 +465,9 @@ void parser_set_input(const char *input) {
     g_last_token_closed_control = false;
     g_paren_depth = 0;
     g_control_top = 0;
-    g_pending.valid = false;
+    g_pending_head = 0;
+    g_pending_tail = 0;
+    g_skip_arrow_detection_once = false;
     g_brace_top = 0;
 }
 
@@ -360,17 +478,20 @@ int yylex(void) {
         return 0; // 视为 EOF
     }
 
-    if (g_pending.valid) {
-        int tok = g_pending.token;
-        if (g_pending.has_semantic) {
-            yylval = g_pending.semantic;
-            g_pending.has_semantic = false;
+    PendingToken queued;
+    if (pending_pop(&queued)) {
+        if (queued.skip_arrow_detection) {
+            g_skip_arrow_detection_once = true;
+        }
+        if (queued.has_semantic) {
+            yylval = queued.semantic;
         } else {
             memset(&yylval, 0, sizeof(yylval));
         }
-        g_pending.valid = false;
-        update_token_state(tok);
-        return tok;
+        if (queued.token != ARROW_HEAD) {
+            update_token_state(queued.token);
+        }
+        return queued.token;
     }
 
     while (1) {
@@ -395,19 +516,36 @@ int yylex(void) {
             return 0;
         }
 
-        diag_set_last_token_location(tk.line, tk.column);
+        int token_line = tk.line;
+        int token_column = tk.column;
+        diag_set_last_token_location(token_line, token_column);
         token_free(&tk);
 
-        if (should_insert_semicolon(g_last_token, g_last_token_closed_control, g_last_token_closed_function, mapped, newline_before, is_eof)) {
-            g_pending.token = mapped;
-            g_pending.valid = true;
-            g_pending.has_semantic = has_semantic;
-            if (has_semantic) {
-                g_pending.semantic = semantic;
-            }
+        if (mapped == FUNCTION && in_statement_context()) {
+            mapped = FUNCTION_DECL;
+        }
+
+        bool skip_detection = g_skip_arrow_detection_once;
+        g_skip_arrow_detection_once = false;
+        bool arrow_candidate = false;
+        if (mapped == '(' && !skip_detection) {
+            arrow_candidate = lookahead_is_arrow_head();
+        }
+        if (arrow_candidate) {
+            pending_push('(', &semantic, has_semantic, true);
+            mapped = ARROW_HEAD;
+            has_semantic = false;
+        }
+
+        if (should_insert_semicolon(g_last_token, g_last_token_closed_control, g_last_token_closed_function, g_last_token_closed_paren, mapped, newline_before, is_eof)) {
+            pending_push(mapped, &semantic, has_semantic, false);
             update_token_state(';');
             memset(&yylval, 0, sizeof(yylval));
             return ';';
+        }
+
+        if (mapped == ARROW && newline_before) {
+            yyerror("LineTerminator not allowed before '=>'");
         }
 
         if (has_semantic) {
@@ -416,7 +554,9 @@ int yylex(void) {
             memset(&yylval, 0, sizeof(yylval));
         }
 
-        update_token_state(mapped);
+        if (mapped != ARROW_HEAD) {
+            update_token_state(mapped);
+        }
         return mapped;
     }
 }

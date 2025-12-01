@@ -92,22 +92,28 @@
 
 1. **词法**
 
-- 确认 `=>` token 在压缩代码中不会被 ASI 误切分；必要时在 `lexer.re` 中增加 `lookahead` 处理。
+- [x] 确认 `=>` token 在压缩代码中不会被 ASI 误切分；必要时在 `lexer.re` 中增加 `lookahead` 处理。
 
 2. **语法/AST**
 
-- `arrow_function` 允许 `binding_element` 参数列表与单参数解构形式。
-- 函数声明/表达式形参列表加入 `param_initializer`、`rest_param` 语义动作。
-- 在 AST 中区分 `AST_ARROW_FUNCTION` 与普通函数，记录 `is_expression_body` 以便后续生成器/async 扩展。
+- [x] `arrow_function` 允许 `binding_element` 参数列表与单参数解构形式。
+- [x] 函数声明/表达式形参列表加入 `param_initializer`、`rest_param` 语义动作。
+- [x] 在 AST 中区分 `AST_ARROW_FUNCTION` 与普通函数，记录 `is_expression_body` 以便后续生成器/async 扩展。
 
 3. **ASI 调整**
 
-- 当 `=>` 前存在换行时，需要参照规范（LineTerminator 不能出现在 `=>` 前）。适配层需阻止在 `)`→`=>` 之间插入分号。
+- [x] 当 `=>` 前存在换行时，需要参照规范（LineTerminator 不能出现在 `=>` 前）。适配层需阻止在 `)`→`=>` 之间插入分号。
 
 4. **测试**
 
-- `test/es6_stage2/arrow_functions.js`：覆盖单参数省略括号、解构参数、默认值、rest、嵌套箭头。
-- 负例：`(a\n)=>{}` 应报错以符合规范。
+- [x] `test/es6_stage2/arrow_functions.js`：覆盖单参数省略括号、解构参数、默认值、rest、嵌套箭头。
+- [x] 负例：`(a\n)=>{}` 应报错以符合规范。
+
+> ✅ **进展更新（2025-12-01）**：通过 `ARROW_HEAD` 预读与 `binding_element` 统一形参与 AST 结构，`test/es6_stage1/destructuring_params.js`、`test/es6_stage2/arrow_functions.js` 全部通过；`test/es6_stage2/test_error_arrow_newline.js` 持续作为 LineTerminator 负例。移除了历史上的 `({ value = 0, ...rest }) => expr` 歧义，并新增对象字面量简写属性支持，使 `({ value, rest }) => ({ value, rest })` 等写法在 GLR 模式下稳定归约。
+
+> 🔧 **新增粒度控制**：`parser.y` 现采用 `member_expr/call_expr/left_hand_side_expr` 三段式建模 `new`，成功解析 `new Image().src = ...`、`new Foo(bar).baz()` 等调用链；`test/JavaScript_Datasets/goodjs/eb8511178bbe1d5132aa2504c710c666` 不再报 “syntax is ambiguous”。
+
+> 📌 **未完事项**：保留 `test/es6_stage1/test_error_destructuring_assign.js` 作为 M1 的待办（赋值场景仍未解锁），同时保持 `docs/es6_limitations.md` 关于 `new.target`/`import()` 的限制说明。后续若引入 `for-of`、`yield` 等语法，需要复用同一套 `binding_element` / `left_hand_side_expr` 基础设施。
 
 ---
 

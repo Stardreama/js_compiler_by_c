@@ -1,0 +1,1 @@
+const tail = (...items) => items;
