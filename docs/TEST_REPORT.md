@@ -199,8 +199,16 @@
   - Program/Block/ForStatement 等节点层级
   - 数组、对象、更新表达式等结构
 
-结果: ✅ AST dump 输出完整，层级符合预期
 ```
+
+## 2025-11-30 JavaScript_Datasets 回归 ✅
+
+- 触发样例：`test/JavaScript_Datasets/goodjs/f7168707057a6c8b7921aa2787ad3ee1`
+- 期望行为：四条全局赋值语句 + 尾随 `//` 注释，应被视为合法 JS。
+- 现象：旧版本报错 `unexpected IDENTIFIER, expecting ';' or ','`，并在词法阶段把 `/* five */` 误识别成正则字面量 `/ * five * /g`。
+- 根因：正则规则允许首字符为 `*`，当注释后直接跟标识符时，re2c 会优先匹配更长的“正则”结果，导致块注释未被跳过。
+- 修复：同步更新根目录与 `src/` 下的 `lexer.re`，要求正则首字符不为 `*`，重新运行 `make parser` 生成新的 `build/generated/lexer.c`。
+- 验证：`.\js_parser.exe test\JavaScript_Datasets\goodjs\f7168707057a6c8b7921aa2787ad3ee1` 现返回 `[PASS]`，同一输入经 `js_lexer.exe` 可确认 `/* five */` 已正确被视作注释。
 
 #### 错误检测验证
 

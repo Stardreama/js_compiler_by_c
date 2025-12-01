@@ -12,6 +12,7 @@ int yyparse(void);
 void parser_set_input(const char *input);
 
 #include "ast.h"
+#include "diagnostics.h"
 
 ASTNode *parser_take_ast(void);
 void parser_reset_error_count(void);
@@ -67,6 +68,11 @@ int main(int argc, char **argv) {
 
     char *input = read_file(filename);
     if (!input) return 1;
+
+    diag_reset();
+    diag_set_current_file(filename);
+    const char *log_path = getenv("JS_PARSER_ERROR_LOG");
+    diag_set_error_log_path(log_path);
 
     parser_reset_error_count();
     parser_set_input(input);

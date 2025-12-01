@@ -21,6 +21,8 @@ BUILD_DIR := build
 GEN_DIR   := $(BUILD_DIR)/generated
 OBJ_DIR   := $(BUILD_DIR)/obj
 BIN_DIR   := $(CURDIR)/bin
+TEST_FAIL_LOG := $(BUILD_DIR)/test_failures.log
+PARSER_ERROR_LOG := $(BUILD_DIR)/parser_error_locations.log
 
 LEXER_TARGET  := js_lexer$(EXE)
 PARSER_TARGET := js_parser$(EXE)
@@ -59,6 +61,7 @@ LEXER_OBJECTS := \
 PARSER_OBJECTS := \
 	$(OBJ_DIR)/parser_main.o \
 	$(OBJ_DIR)/parser_lex_adapter.o \
+	$(OBJ_DIR)/diagnostics.o \
 	$(OBJ_DIR)/lexer.o \
 	$(OBJ_DIR)/parser.o \
 	$(OBJ_DIR)/ast.o
@@ -95,6 +98,9 @@ $(OBJ_DIR)/parser_main.o: $(SRC_DIR)/parser_main.c $(PARSER_H) $(SRC_DIR)/ast.h 
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OBJ_DIR)/parser_lex_adapter.o: $(SRC_DIR)/parser_lex_adapter.c $(PARSER_H) $(SRC_DIR)/token.h | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/diagnostics.o: $(SRC_DIR)/diagnostics.c $(SRC_DIR)/diagnostics.h | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OBJ_DIR)/ast.o: $(SRC_DIR)/ast.c $(SRC_DIR)/ast.h | $(OBJ_DIR)
@@ -137,6 +143,8 @@ define RUN_TESTS_BODY
 	BLUE='\033[0;34m'; \
 	YELLOW='\033[1;33m'; \
 	NC='\033[0m'; \
+	log_file="$(TEST_FAIL_LOG)"; \
+	error_log="$(PARSER_ERROR_LOG)"; \
 	files_list=$$files; \
 	total=0; \
 	for f in $$files_list; do total=$$((total+1)); done; \
@@ -163,29 +171,40 @@ define RUN_TESTS_BODY
 		if echo "$$f" | grep -E "(test_error|temp)" > /dev/null; then \
 			is_expected_error=1; \
 		fi; \
-		output=$$(./$(PARSER_TARGET) "$$f" 2>&1); \
+		output=$$(JS_PARSER_ERROR_LOG="$$error_log" ./$(PARSER_TARGET) "$$f" 2>&1); \
 		status=$$?; \
 		if [ $$is_expected_error -eq 1 ]; then \
 			if [ $$status -ne 0 ]; then \
-				printf "$${GREEN}PASS$${NC} ($${RED}Caught$${NC})\n"; \
+				printf "$$${GREEN}PASS$${NC} ($${RED}Caught$${NC})\n"; \
 				passed=$$((passed + 1)); \
 				first_line=$$(printf "%s\n" "$$output" | sed -n '1p'); \
 				if [ -n "$$first_line" ]; then \
 					printf "    %s\n" "$$first_line"; \
 				fi; \
 			else \
-				printf "$${RED}FAIL$${NC} (Unexpected Success)\n"; \
+				printf "$$${RED}FAIL$${NC} (Unexpected Success)\n"; \
 				failed=$$((failed + 1)); \
 				echo "$$output" | sed 's/^/    /'; \
+				if [ -n "$$log_file" ]; then \
+					printf "Test: %s\n" "$$f" >> "$$log_file"; \
+					printf "Reason: Expected failure but parser succeeded.\n" >> "$$log_file"; \
+					if [ -n "$$output" ]; then printf "%s\n" "$$output" >> "$$log_file"; fi; \
+					printf "\n" >> "$$log_file"; \
+				fi; \
 			fi; \
 		else \
 			if [ $$status -eq 0 ]; then \
-				printf "$${GREEN}PASS$${NC}\n"; \
+				printf "$$${GREEN}PASS$${NC}\n"; \
 				passed=$$((passed + 1)); \
 			else \
-				printf "$${RED}FAIL$${NC}\n"; \
+				printf "$$${RED}FAIL$${NC}\n"; \
 				failed=$$((failed + 1)); \
 				echo "$$output" | sed 's/^/    /'; \
+				if [ -n "$$log_file" ]; then \
+					printf "Test: %s\n" "$$f" >> "$$log_file"; \
+					if [ -n "$$output" ]; then printf "%s\n" "$$output" >> "$$log_file"; fi; \
+					printf "\n" >> "$$log_file"; \
+				fi; \
 			fi; \
 		fi; \
 	done; \
@@ -193,12 +212,18 @@ define RUN_TESTS_BODY
 	if [ $$failed -eq 0 ]; then \
 		printf "$${GREEN}SUCCESS: All $$total tests passed.$${NC}\n"; \
 	else \
-		printf "$${RED}FAILURE: $$failed out of $$total tests failed.$${NC}\n"; \
+		printf "$$${RED}FAILURE: $$failed out of $$total tests failed.$${NC}\n"; \
+		if [ -n "$(TEST_FAIL_LOG)" ] && [ -f "$(TEST_FAIL_LOG)" ]; then \
+			printf "$${YELLOW}See detailed errors in %s.$${NC}\n" "$(TEST_FAIL_LOG)"; \
+		fi; \
 		exit 1; \
 	fi
 endef
 
 test: $(PARSER_TARGET)
+	@$(MKDIR) -p $(BUILD_DIR)
+	@rm -f $(TEST_FAIL_LOG)
+	@rm -f $(PARSER_ERROR_LOG)
 	@if [ -z "$(TEST_ARGS)" ]; then \
 		files=$$(find $(TEST_DIR) -type f); \
 		if [ -z "$$files" ]; then \

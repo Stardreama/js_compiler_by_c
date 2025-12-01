@@ -21,6 +21,8 @@ void lexer_init(Lexer *lexer, const char *input) {
     lexer->column = 1;
     lexer->has_newline = false;
     lexer->prev_tok_state = PREV_TOK_CAN_REGEX;
+    lexer->in_template_expression = false;
+    lexer->template_expr_depth = 0;
 }
 
 // 创建 token
@@ -54,6 +56,74 @@ static int can_start_regex(Lexer *lexer) {
     return lexer->prev_tok_state == PREV_TOK_CAN_REGEX;
 }
 
+static Token make_template_token(TokenType type, const char *start, const char *end, int line, int column) {
+    Token token = make_token(type, start, end, line, column);
+    if (!token.value) {
+        token.value = (char *)calloc(1, sizeof(char));
+    }
+    return token;
+}
+
+static Token lex_template_segment(Lexer *lexer, bool is_start) {
+    const char *segment_start = lexer->cursor;
+    int segment_line = lexer->line;
+    int segment_column = lexer->column;
+
+    while (1) {
+        char c = *lexer->cursor;
+        if (c == '\0') {
+            fprintf(stderr, "Unterminated template literal at line %d, column %d\n", segment_line, segment_column);
+            return make_token(TOK_ERROR, NULL, NULL, segment_line, segment_column);
+        }
+
+        if (c == '`') {
+            TokenType ttype = is_start ? TOK_TEMPLATE_NO_SUB : TOK_TEMPLATE_TAIL;
+            Token token = make_template_token(ttype, segment_start, lexer->cursor, segment_line, segment_column);
+            lexer->cursor++;
+            lexer->column++;
+            lexer->prev_tok_state = PREV_TOK_NO_REGEX;
+            return token;
+        }
+
+        if (c == '$' && lexer->cursor[1] == '{') {
+            TokenType ttype = is_start ? TOK_TEMPLATE_HEAD : TOK_TEMPLATE_MIDDLE;
+            Token token = make_template_token(ttype, segment_start, lexer->cursor, segment_line, segment_column);
+            lexer->cursor += 2;
+            lexer->column += 2;
+            lexer->in_template_expression = true;
+            lexer->template_expr_depth = 0;
+            lexer->prev_tok_state = PREV_TOK_CAN_REGEX;
+            return token;
+        }
+
+        if (c == '\\') {
+            lexer->cursor++;
+            lexer->column++;
+            if (*lexer->cursor) {
+                if (*lexer->cursor == '\n') {
+                    lexer->cursor++;
+                    lexer->line++;
+                    lexer->column = 1;
+                } else {
+                    lexer->cursor++;
+                    lexer->column++;
+                }
+            }
+            continue;
+        }
+
+        if (c == '\n') {
+            lexer->cursor++;
+            lexer->line++;
+            lexer->column = 1;
+            continue;
+        }
+
+        lexer->cursor++;
+        lexer->column++;
+    }
+}
+
 // 获取下一个 token
 Token lexer_next_token(Lexer *lexer) {
     const char *token_start;
@@ -81,6 +151,12 @@ Token lexer_next_token(Lexer *lexer) {
             lexer->column = 1;
             lexer->has_newline = true;
             continue;
+        }
+
+        "..." {
+            lexer->column += 3;
+            lexer->prev_tok_state = PREV_TOK_CAN_REGEX;
+            return make_token(TOK_ELLIPSIS, NULL, NULL, token_line, token_column);
         }
         
         // 单行注释
@@ -218,8 +294,28 @@ Token lexer_next_token(Lexer *lexer) {
             return make_token(TOK_STRING, str_start, lexer->cursor, token_line, token_column);
         }
 
-        // 正则表达字面量
-        "/" ( [^/\\\r\n[] | "\\" [^\r\n] | "[" ( [^\]\\\r\n] | "\\" [^\r\n] )* "]" )+ "/" [gimsuy]* {
+        "`" {
+            lexer->column++;
+            Token tpl = lex_template_segment(lexer, true);
+            if (tpl.type == TOK_ERROR) {
+                return tpl;
+            }
+            return tpl;
+        }
+
+                // 正则表达字面量（首字符不能是 '*'，以免与块注释 '/* */' 冲突）
+                "/"
+                (
+                        [^*/\\\r\n[]
+                    | "\\" [^\r\n]
+                    | "[" ( [^\]\\\r\n] | "\\" [^\r\n] )* "]"
+                )
+                (
+                        [^/\\\r\n[]
+                    | "\\" [^\r\n]
+                    | "[" ( [^\]\\\r\n] | "\\" [^\r\n] )* "]"
+                )*
+                "/" [gimsuy]* {
             if (can_start_regex(lexer)) {
                 lexer->column += (lexer->cursor - token_start);
                 lexer->prev_tok_state = PREV_TOK_NO_REGEX;
@@ -248,6 +344,13 @@ Token lexer_next_token(Lexer *lexer) {
             if (strncmp(token_start, "===", 3) == 0) return make_token(TOK_EQ_STRICT, NULL, NULL, token_line, token_column);
             if (strncmp(token_start, "!==", 3) == 0) return make_token(TOK_NE_STRICT, NULL, NULL, token_line, token_column);
         }
+        
+            // 箭头函数 =>
+            "=>" {
+                lexer->column += 2;
+                lexer->prev_tok_state = PREV_TOK_CAN_REGEX;
+                return make_token(TOK_ARROW, NULL, NULL, token_line, token_column);
+            }
         
         // 双字符运算符（除除法符号）
         "++"|"--"|"<<"|">>"|">>>"|"<="|">="|"=="|"!="|"&&"|"||"|
@@ -297,8 +400,32 @@ Token lexer_next_token(Lexer *lexer) {
 		":" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_COLON, NULL, NULL, token_line, token_column); }
 		"(" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LPAREN, NULL, NULL, token_line, token_column); }
 		")" { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_RPAREN, NULL, NULL, token_line, token_column); }
-		"{" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LBRACE, NULL, NULL, token_line, token_column); }
-		"}" { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_RBRACE, NULL, NULL, token_line, token_column); }
+        "{" {
+            lexer->column++;
+            if (lexer->in_template_expression) {
+                lexer->template_expr_depth++;
+            }
+            lexer->prev_tok_state = PREV_TOK_CAN_REGEX;
+            return make_token(TOK_LBRACE, NULL, NULL, token_line, token_column);
+        }
+        "}" {
+            lexer->column++;
+            if (lexer->in_template_expression) {
+                if (lexer->template_expr_depth > 0) {
+                    lexer->template_expr_depth--;
+                    lexer->prev_tok_state = PREV_TOK_NO_REGEX;
+                    return make_token(TOK_RBRACE, NULL, NULL, token_line, token_column);
+                }
+                lexer->in_template_expression = false;
+                Token tpl = lex_template_segment(lexer, false);
+                if (tpl.type == TOK_ERROR) {
+                    return tpl;
+                }
+                return tpl;
+            }
+            lexer->prev_tok_state = PREV_TOK_NO_REGEX;
+            return make_token(TOK_RBRACE, NULL, NULL, token_line, token_column);
+        }
 		"[" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_LBRACKET, NULL, NULL, token_line, token_column); }
 		"]" { lexer->column++; lexer->prev_tok_state = PREV_TOK_NO_REGEX; return make_token(TOK_RBRACKET, NULL, NULL, token_line, token_column); }
 		";" { lexer->column++; lexer->prev_tok_state = PREV_TOK_CAN_REGEX; return make_token(TOK_SEMICOLON, NULL, NULL, token_line, token_column); }
@@ -379,6 +506,10 @@ const char *token_type_to_string(TokenType type) {
         case TOK_STRING: return "STRING";
         case TOK_REGEX: return "REGEX";
         case TOK_IDENTIFIER: return "IDENTIFIER";
+        case TOK_TEMPLATE_NO_SUB: return "TEMPLATE_NO_SUB";
+        case TOK_TEMPLATE_HEAD: return "TEMPLATE_HEAD";
+        case TOK_TEMPLATE_MIDDLE: return "TEMPLATE_MIDDLE";
+        case TOK_TEMPLATE_TAIL: return "TEMPLATE_TAIL";
         case TOK_PLUS: return "+";
         case TOK_MINUS: return "-";
         case TOK_STAR: return "*";
@@ -392,6 +523,7 @@ const char *token_type_to_string(TokenType type) {
         case TOK_STAR_ASSIGN: return "*=";
         case TOK_SLASH_ASSIGN: return "/=";
         case TOK_PERCENT_ASSIGN: return "%=";
+        case TOK_ARROW: return "=>";
         case TOK_EQ: return "==";
         case TOK_NE: return "!=";
         case TOK_EQ_STRICT: return "===";

@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include "token.h"
 #include "parser.h"  // 由 bison -d 生成，包含 VAR/LET/... 等 token 定义
+#include "diagnostics.h"
 
 static Lexer g_lexer;
 static int g_initialized = 0;
@@ -155,6 +156,8 @@ static bool can_end_statement(int token) {
         case FALSE:
         case NULL_T:
         case UNDEFINED:
+        case TEMPLATE_NO_SUB:
+        case TEMPLATE_TAIL:
         case DEFAULT:
         case ')':
         case ']':
@@ -264,6 +267,10 @@ static int convert_token_type(TokenType type) {
         case TOK_STRING:     return STRING;
         case TOK_REGEX:      return REGEX;
         case TOK_IDENTIFIER: return IDENTIFIER;
+        case TOK_TEMPLATE_NO_SUB: return TEMPLATE_NO_SUB;
+        case TOK_TEMPLATE_HEAD:   return TEMPLATE_HEAD;
+        case TOK_TEMPLATE_MIDDLE: return TEMPLATE_MIDDLE;
+        case TOK_TEMPLATE_TAIL:   return TEMPLATE_TAIL;
 
         case TOK_PLUS_PLUS:  return PLUS_PLUS;
         case TOK_MINUS_MINUS:return MINUS_MINUS;
@@ -271,6 +278,7 @@ static int convert_token_type(TokenType type) {
         case TOK_NE:         return NE;
         case TOK_EQ_STRICT:  return EQ_STRICT;
         case TOK_NE_STRICT:  return NE_STRICT;
+        case TOK_ARROW:      return ARROW;
         case TOK_LE:         return LE;
         case TOK_GE:         return GE;
         case TOK_AND:        return AND;
@@ -289,6 +297,7 @@ static int convert_token_type(TokenType type) {
         case TOK_LSHIFT_ASSIGN:  return LSHIFT_ASSIGN;
         case TOK_RSHIFT_ASSIGN:  return RSHIFT_ASSIGN;
         case TOK_URSHIFT_ASSIGN: return URSHIFT_ASSIGN;
+        case TOK_ELLIPSIS:  return ELLIPSIS;
 
         case TOK_PLUS:       return '+';
         case TOK_MINUS:      return '-';
@@ -386,6 +395,7 @@ int yylex(void) {
             return 0;
         }
 
+        diag_set_last_token_location(tk.line, tk.column);
         token_free(&tk);
 
         if (should_insert_semicolon(g_last_token, g_last_token_closed_control, g_last_token_closed_function, mapped, newline_before, is_eof)) {

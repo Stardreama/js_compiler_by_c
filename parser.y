@@ -6,13 +6,38 @@
 %{
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "ast.h"
+#include "diagnostics.h"
 
 int yylex(void);
 void yyerror(const char *s);
 
 static ASTNode *g_parser_ast_root = NULL;
 static int g_parser_error_count = 0;
+
+static ASTNode *make_template_string_node(char *text) {
+    return ast_make_string_literal_raw(text);
+}
+
+static ASTNode *build_template_concatenation(ASTList *parts) {
+    ASTNode *result = NULL;
+    ASTList *iter = parts;
+    while (iter) {
+        if (!result) {
+            result = iter->node;
+        } else {
+            result = ast_make_binary("+", result, iter->node);
+        }
+        ASTList *next = iter->next;
+        free(iter);
+        iter = next;
+    }
+    if (!result) {
+        return ast_make_string_literal_raw(NULL);
+    }
+    return result;
+}
 %}
 
 %code provides {
@@ -36,7 +61,7 @@ static int g_parser_error_count = 0;
 %token SWITCH CASE DEFAULT TRY CATCH FINALLY THROW NEW THIS TYPEOF DELETE IN INSTANCEOF VOID WITH DEBUGGER
 
 %token TRUE FALSE NULL_T UNDEFINED
-%token <str> IDENTIFIER NUMBER STRING
+%token <str> IDENTIFIER NUMBER STRING REGEX TEMPLATE_NO_SUB TEMPLATE_HEAD TEMPLATE_MIDDLE TEMPLATE_TAIL
 
 %token PLUS_PLUS MINUS_MINUS
 %token EQ NE EQ_STRICT NE_STRICT
@@ -44,6 +69,7 @@ static int g_parser_error_count = 0;
 %token LSHIFT RSHIFT URSHIFT
 %token PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN SLASH_ASSIGN PERCENT_ASSIGN
 %token AND_ASSIGN OR_ASSIGN XOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN URSHIFT_ASSIGN
+%token ARROW ELLIPSIS
 
 %define parse.error verbose
 %right '=' PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN SLASH_ASSIGN PERCENT_ASSIGN AND_ASSIGN OR_ASSIGN XOR_ASSIGN LSHIFT_ASSIGN RSHIFT_ASSIGN URSHIFT_ASSIGN
@@ -54,17 +80,23 @@ static int g_parser_error_count = 0;
 %left '^'
 %left '&'
 %left EQ NE EQ_STRICT NE_STRICT
-%left '<' '>' LE GE
+%left '<' '>' LE GE INSTANCEOF IN
 %left LSHIFT RSHIFT URSHIFT
 %left '+' '-'
 %left '*' '/' '%'
+%right NEW
 %right UMINUS '!' '~' TYPEOF DELETE VOID PLUS_PLUS MINUS_MINUS
 
-%type <node> program stmt block var_stmt opt_init return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init opt_expr catch_clause finally_clause finally_clause_opt switch_case
-%type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr shift_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr
-%type <node> expr_no_obj assignment_expr_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
+%type <node> program stmt block var_stmt return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init for_in_left opt_expr catch_clause finally_clause finally_clause_opt switch_case var_decl
+%type <node> expr assignment_expr conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr relational_expr_in shift_expr additive_expr multiplicative_expr unary_expr postfix_expr primary_expr function_expr new_expr template_literal
+%type <node> expr_no_obj assignment_expr_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj relational_expr_no_obj_in shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj primary_no_obj
+%type <node> binding_element binding_initializer_opt object_binding array_binding binding_property binding_rest_property binding_rest_element assignment_pattern object_assignment_pattern array_assignment_pattern assignment_property assignment_element assignment_rest_element assignment_target for_binding for_binding_declarator catch_parameter
+%type <node> arrow_function arrow_body
 %type <node> array_literal object_literal prop
-%type <list> stmt_list opt_param_list param_list opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq
+
+%type <str> property_name property_name_keyword
+
+%type <list> stmt_list opt_param_list param_list opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list template_part_list binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list
 
 %%
 
@@ -128,19 +160,28 @@ block
   ;
 
 var_stmt
-  : VAR IDENTIFIER opt_init
-      { $$ = ast_make_var_decl(AST_VAR_KIND_VAR, $2, $3); }
-  | LET IDENTIFIER opt_init
-      { $$ = ast_make_var_decl(AST_VAR_KIND_LET, $2, $3); }
-  | CONST IDENTIFIER opt_init
-      { $$ = ast_make_var_decl(AST_VAR_KIND_CONST, $2, $3); }
+  : VAR var_decl_list
+      { $$ = ast_make_var_stmt(AST_VAR_KIND_VAR, $2); }
+  | LET var_decl_list
+      { $$ = ast_make_var_stmt(AST_VAR_KIND_LET, $2); }
+  | CONST var_decl_list
+      { $$ = ast_make_var_stmt(AST_VAR_KIND_CONST, $2); }
   ;
 
-opt_init
-  : /* empty */
-      { $$ = NULL; }
-  | '=' expr
-      { $$ = $2; }
+var_decl_list
+  : var_decl
+      { $$ = ast_list_append(NULL, $1); }
+  | var_decl_list ',' var_decl
+      { $$ = ast_list_append($1, $3); }
+  ;
+
+var_decl
+  : IDENTIFIER binding_initializer_opt
+      { $$ = ast_make_var_decl(ast_make_binding_pattern(ast_make_identifier($1), $2)); }
+  | object_binding '=' assignment_expr
+      { $$ = ast_make_var_decl(ast_make_binding_pattern($1, $3)); }
+  | array_binding '=' assignment_expr
+      { $$ = ast_make_var_decl(ast_make_binding_pattern($1, $3)); }
   ;
 
 return_stmt
@@ -160,6 +201,8 @@ if_stmt
 for_stmt
   : FOR '(' for_init ';' opt_expr ';' opt_expr ')' stmt
       { $$ = ast_make_for($3, $5, $7, $9); }
+  | FOR '(' for_in_left IN expr ')' stmt
+      { $$ = ast_make_for_in($3, $5, $7); }
   ;
 
 while_stmt
@@ -179,7 +222,16 @@ for_init
       { $$ = NULL; }
   | var_stmt
       { $$ = $1; }
-  | expr
+    | expr_no_obj
+      { $$ = $1; }
+  ;
+
+for_in_left
+  : for_binding
+      { $$ = $1; }
+  | assignment_pattern
+      { $$ = $1; }
+  | assignment_expr_no_obj
       { $$ = $1; }
   ;
 
@@ -221,13 +273,6 @@ func_decl
       { $$ = ast_make_function_decl($2, $4, $6); }
   ;
 
-function_expr
-  : FUNCTION '(' opt_param_list ')' block
-      { $$ = ast_make_function_expr(NULL, $3, $5); }
-  | FUNCTION IDENTIFIER '(' opt_param_list ')' block
-      { $$ = ast_make_function_expr($2, $4, $6); }
-  ;
-
 opt_param_list
   : /* empty */
       { $$ = NULL; }
@@ -236,15 +281,24 @@ opt_param_list
   ;
 
 param_list
-  : IDENTIFIER
-      { $$ = ast_list_append(NULL, ast_make_identifier($1)); }
-  | param_list ',' IDENTIFIER
-      { $$ = ast_list_append($1, ast_make_identifier($3)); }
+  : binding_element
+      { $$ = ast_list_append(NULL, $1); }
+  | param_list ',' binding_element
+      { $$ = ast_list_append($1, $3); }
   ;
 
 catch_clause
-    : CATCH '(' IDENTIFIER ')' block
-            { $$ = ast_make_catch($3, $5); }
+    : CATCH '(' catch_parameter ')' block
+        { $$ = ast_make_catch($3, $5); }
+    ;
+
+catch_parameter
+    : IDENTIFIER
+        { $$ = ast_make_binding_pattern(ast_make_identifier($1), NULL); }
+    | object_binding
+        { $$ = ast_make_binding_pattern($1, NULL); }
+    | array_binding
+        { $$ = ast_make_binding_pattern($1, NULL); }
     ;
 
 finally_clause
@@ -303,7 +357,7 @@ expr
   ;
 
 assignment_expr
-  : postfix_expr '=' assignment_expr
+    : postfix_expr '=' assignment_expr
       { $$ = ast_make_assignment("=", $1, $3); }
   | postfix_expr PLUS_ASSIGN assignment_expr
       { $$ = ast_make_assignment("+=", $1, $3); }
@@ -327,6 +381,8 @@ assignment_expr
       { $$ = ast_make_assignment(">>=", $1, $3); }
   | postfix_expr URSHIFT_ASSIGN assignment_expr
       { $$ = ast_make_assignment(">>>=", $1, $3); }
+  | arrow_function
+      { $$ = $1; }
   | conditional_expr
       { $$ = $1; }
   ;
@@ -397,6 +453,17 @@ relational_expr
       { $$ = ast_make_binary("<=", $1, $3); }
   | relational_expr GE shift_expr
       { $$ = ast_make_binary(">=", $1, $3); }
+  | relational_expr INSTANCEOF shift_expr
+      { $$ = ast_make_binary("instanceof", $1, $3); }
+  | relational_expr_in
+      { $$ = $1; }
+  ;
+
+relational_expr_in
+  : shift_expr IN shift_expr
+      { $$ = ast_make_binary("in", $1, $3); }
+  | relational_expr_in IN shift_expr
+      { $$ = ast_make_binary("in", $1, $3); }
   ;
 
 shift_expr
@@ -431,8 +498,8 @@ multiplicative_expr
   ;
 
 unary_expr
-  : postfix_expr
-      { $$ = $1; }
+    : postfix_expr
+            { $$ = $1; }
   | '+' unary_expr
       { $$ = ast_make_unary("+", $2); }
   | '-' unary_expr %prec UMINUS
@@ -456,8 +523,8 @@ unary_expr
 postfix_expr
   : primary_expr
       { $$ = $1; }
-  | postfix_expr '.' IDENTIFIER
-      { $$ = ast_make_member($1, $3, false); }
+  | postfix_expr '.' property_name
+      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
   | postfix_expr '[' expr ']'
       { $$ = ast_make_member($1, $3, true); }
   | postfix_expr '(' opt_arg_list ')'
@@ -485,10 +552,14 @@ arg_list
 primary_expr
   : IDENTIFIER
       { $$ = ast_make_identifier($1); }
+  | THIS
+        { $$ = ast_make_this_expr(); }
   | NUMBER
       { $$ = ast_make_number_literal($1); }
   | STRING
       { $$ = ast_make_string_literal($1); }
+  | REGEX
+      { $$ = ast_make_regex_literal($1); }
   | TRUE
       { $$ = ast_make_boolean_literal(true); }
   | FALSE
@@ -503,19 +574,39 @@ primary_expr
       { $$ = $1; }
   | object_literal
       { $$ = $1; }
+  | template_literal
+      { $$ = $1; }
+  | '(' function_expr ')'
+      { $$ = $2; }
   | function_expr
       { $$ = $1; }
+  | new_expr
+      { $$ = $1; }
+  ;
+
+function_expr
+  : FUNCTION IDENTIFIER '(' opt_param_list ')' block
+      { $$ = ast_make_function_expr($2, $4, $6); }
+  | FUNCTION '(' opt_param_list ')' block
+      { $$ = ast_make_function_expr(NULL, $3, $5); }
+  ;
+
+new_expr
+  : NEW unary_expr
+      { $$ = ast_make_new_expr($2, NULL); }
+  | NEW unary_expr '(' opt_arg_list ')'
+      { $$ = ast_make_new_expr($2, $4); }
   ;
 
 expr_no_obj
     : assignment_expr_no_obj
             { $$ = $1; }
-    | expr_no_obj ',' assignment_expr
+    | expr_no_obj ',' assignment_expr_no_obj
             { $$ = ast_make_sequence($1, $3); }
     ;
 
 assignment_expr_no_obj
-  : postfix_expr_no_obj '=' assignment_expr
+    : postfix_expr_no_obj '=' assignment_expr
       { $$ = ast_make_assignment("=", $1, $3); }
   | postfix_expr_no_obj PLUS_ASSIGN assignment_expr
       { $$ = ast_make_assignment("+=", $1, $3); }
@@ -539,7 +630,31 @@ assignment_expr_no_obj
       { $$ = ast_make_assignment(">>=", $1, $3); }
   | postfix_expr_no_obj URSHIFT_ASSIGN assignment_expr
       { $$ = ast_make_assignment(">>>=", $1, $3); }
+  | arrow_function
+      { $$ = $1; }
   | conditional_expr_no_obj
+      { $$ = $1; }
+  ;
+
+arrow_function
+  : IDENTIFIER ARROW arrow_body
+      {
+          ASTList *params = NULL;
+          params = ast_list_append(params, ast_make_identifier($1));
+          $$ = ast_make_function_expr(NULL, params, $3);
+      }
+  | '(' opt_param_list ')' ARROW arrow_body
+      { $$ = ast_make_function_expr(NULL, $2, $5); }
+  ;
+
+arrow_body
+  : assignment_expr
+      {
+          ASTList *stmts = NULL;
+          stmts = ast_list_append(stmts, ast_make_return($1));
+          $$ = ast_make_block(stmts);
+      }
+  | block
       { $$ = $1; }
   ;
 
@@ -553,123 +668,134 @@ conditional_expr_no_obj
 logical_or_expr_no_obj
   : logical_and_expr_no_obj
       { $$ = $1; }
-  | logical_or_expr_no_obj OR logical_and_expr
+  | logical_or_expr_no_obj OR logical_and_expr_no_obj
       { $$ = ast_make_binary("||", $1, $3); }
   ;
 
 logical_and_expr_no_obj
   : bitwise_or_expr_no_obj
       { $$ = $1; }
-  | logical_and_expr_no_obj AND bitwise_or_expr
+  | logical_and_expr_no_obj AND bitwise_or_expr_no_obj
       { $$ = ast_make_binary("&&", $1, $3); }
   ;
 
 bitwise_or_expr_no_obj
   : bitwise_xor_expr_no_obj
       { $$ = $1; }
-  | bitwise_or_expr_no_obj '|' bitwise_xor_expr
+  | bitwise_or_expr_no_obj '|' bitwise_xor_expr_no_obj
       { $$ = ast_make_binary("|", $1, $3); }
   ;
 
 bitwise_xor_expr_no_obj
   : bitwise_and_expr_no_obj
       { $$ = $1; }
-  | bitwise_xor_expr_no_obj '^' bitwise_and_expr
+  | bitwise_xor_expr_no_obj '^' bitwise_and_expr_no_obj
       { $$ = ast_make_binary("^", $1, $3); }
   ;
 
 bitwise_and_expr_no_obj
   : equality_expr_no_obj
       { $$ = $1; }
-  | bitwise_and_expr_no_obj '&' equality_expr
+  | bitwise_and_expr_no_obj '&' equality_expr_no_obj
       { $$ = ast_make_binary("&", $1, $3); }
   ;
 
 equality_expr_no_obj
   : relational_expr_no_obj
       { $$ = $1; }
-  | equality_expr_no_obj EQ relational_expr
+  | equality_expr_no_obj EQ relational_expr_no_obj
       { $$ = ast_make_binary("==", $1, $3); }
-  | equality_expr_no_obj NE relational_expr
+  | equality_expr_no_obj NE relational_expr_no_obj
       { $$ = ast_make_binary("!=", $1, $3); }
-  | equality_expr_no_obj EQ_STRICT relational_expr
+  | equality_expr_no_obj EQ_STRICT relational_expr_no_obj
       { $$ = ast_make_binary("===", $1, $3); }
-  | equality_expr_no_obj NE_STRICT relational_expr
+  | equality_expr_no_obj NE_STRICT relational_expr_no_obj
       { $$ = ast_make_binary("!==", $1, $3); }
   ;
 
 relational_expr_no_obj
   : shift_expr_no_obj
       { $$ = $1; }
-  | relational_expr_no_obj '<' shift_expr
+  | relational_expr_no_obj '<' shift_expr_no_obj
       { $$ = ast_make_binary("<", $1, $3); }
-  | relational_expr_no_obj '>' shift_expr
+  | relational_expr_no_obj '>' shift_expr_no_obj
       { $$ = ast_make_binary(">", $1, $3); }
-  | relational_expr_no_obj LE shift_expr
+  | relational_expr_no_obj LE shift_expr_no_obj
       { $$ = ast_make_binary("<=", $1, $3); }
-  | relational_expr_no_obj GE shift_expr
+  | relational_expr_no_obj GE shift_expr_no_obj
       { $$ = ast_make_binary(">=", $1, $3); }
+  | relational_expr_no_obj INSTANCEOF shift_expr_no_obj
+      { $$ = ast_make_binary("instanceof", $1, $3); }
+  | relational_expr_no_obj_in
+      { $$ = $1; }
+  ;
+
+relational_expr_no_obj_in
+  : shift_expr_no_obj IN shift_expr_no_obj
+      { $$ = ast_make_binary("in", $1, $3); }
+  | relational_expr_no_obj_in IN shift_expr_no_obj
+      { $$ = ast_make_binary("in", $1, $3); }
   ;
 
 shift_expr_no_obj
   : additive_expr_no_obj
       { $$ = $1; }
-  | shift_expr_no_obj LSHIFT additive_expr
+  | shift_expr_no_obj LSHIFT additive_expr_no_obj
       { $$ = ast_make_binary("<<", $1, $3); }
-  | shift_expr_no_obj RSHIFT additive_expr
+  | shift_expr_no_obj RSHIFT additive_expr_no_obj
       { $$ = ast_make_binary(">>", $1, $3); }
-  | shift_expr_no_obj URSHIFT additive_expr
+  | shift_expr_no_obj URSHIFT additive_expr_no_obj
       { $$ = ast_make_binary(">>>", $1, $3); }
   ;
 
 additive_expr_no_obj
   : multiplicative_expr_no_obj
       { $$ = $1; }
-  | additive_expr_no_obj '+' multiplicative_expr
+  | additive_expr_no_obj '+' multiplicative_expr_no_obj
       { $$ = ast_make_binary("+", $1, $3); }
-  | additive_expr_no_obj '-' multiplicative_expr
+  | additive_expr_no_obj '-' multiplicative_expr_no_obj
       { $$ = ast_make_binary("-", $1, $3); }
   ;
 
 multiplicative_expr_no_obj
   : unary_expr_no_obj
       { $$ = $1; }
-  | multiplicative_expr_no_obj '*' unary_expr
+  | multiplicative_expr_no_obj '*' unary_expr_no_obj
       { $$ = ast_make_binary("*", $1, $3); }
-  | multiplicative_expr_no_obj '/' unary_expr
+  | multiplicative_expr_no_obj '/' unary_expr_no_obj
       { $$ = ast_make_binary("/", $1, $3); }
-  | multiplicative_expr_no_obj '%' unary_expr
+  | multiplicative_expr_no_obj '%' unary_expr_no_obj
       { $$ = ast_make_binary("%", $1, $3); }
   ;
 
 unary_expr_no_obj
   : postfix_expr_no_obj
       { $$ = $1; }
-  | '+' unary_expr
+  | '+' unary_expr_no_obj
       { $$ = ast_make_unary("+", $2); }
-  | '-' unary_expr %prec UMINUS
+  | '-' unary_expr_no_obj %prec UMINUS
       { $$ = ast_make_unary("-", $2); }
-  | '!' unary_expr
+  | '!' unary_expr_no_obj
       { $$ = ast_make_unary("!", $2); }
-  | '~' unary_expr
+  | '~' unary_expr_no_obj
       { $$ = ast_make_unary("~", $2); }
-  | TYPEOF unary_expr
+  | TYPEOF unary_expr_no_obj
       { $$ = ast_make_unary("typeof", $2); }
-  | DELETE unary_expr
+  | DELETE unary_expr_no_obj
       { $$ = ast_make_unary("delete", $2); }
-  | VOID unary_expr
+  | VOID unary_expr_no_obj
       { $$ = ast_make_unary("void", $2); }
-  | PLUS_PLUS unary_expr
+  | PLUS_PLUS unary_expr_no_obj
       { $$ = ast_make_update("++", $2, true); }
-  | MINUS_MINUS unary_expr
+  | MINUS_MINUS unary_expr_no_obj
       { $$ = ast_make_update("--", $2, true); }
   ;
 
 postfix_expr_no_obj
   : primary_no_obj
       { $$ = $1; }
-  | postfix_expr_no_obj '.' IDENTIFIER
-      { $$ = ast_make_member($1, $3, false); }
+  | postfix_expr_no_obj '.' property_name
+      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
   | postfix_expr_no_obj '[' expr ']'
       { $$ = ast_make_member($1, $3, true); }
   | postfix_expr_no_obj '(' opt_arg_list ')'
@@ -683,10 +809,14 @@ postfix_expr_no_obj
 primary_no_obj
   : IDENTIFIER
       { $$ = ast_make_identifier($1); }
+  | THIS
+        { $$ = ast_make_this_expr(); }
   | NUMBER
       { $$ = ast_make_number_literal($1); }
   | STRING
       { $$ = ast_make_string_literal($1); }
+  | REGEX
+      { $$ = ast_make_regex_literal($1); }
   | TRUE
       { $$ = ast_make_boolean_literal(true); }
   | FALSE
@@ -698,6 +828,14 @@ primary_no_obj
   | '(' expr ')'
       { $$ = $2; }
   | array_literal
+      { $$ = $1; }
+  | template_literal
+      { $$ = $1; }
+  | '(' function_expr ')'
+        { $$ = $2; }
+  | function_expr
+        { $$ = $1; }
+  | new_expr
       { $$ = $1; }
   ;
 
@@ -727,6 +865,35 @@ object_literal
       { $$ = ast_make_object_literal($2); }
   ;
 
+template_literal
+  : TEMPLATE_NO_SUB
+      { $$ = make_template_string_node($1); }
+  | TEMPLATE_HEAD template_part_list
+      {
+          ASTList *parts = NULL;
+          parts = ast_list_append(parts, make_template_string_node($1));
+          parts = ast_list_concat(parts, $2);
+          $$ = build_template_concatenation(parts);
+      }
+  ;
+
+template_part_list
+  : assignment_expr TEMPLATE_TAIL
+      {
+          ASTList *parts = NULL;
+          parts = ast_list_append(parts, $1);
+          parts = ast_list_append(parts, make_template_string_node($2));
+          $$ = parts;
+      }
+  | assignment_expr TEMPLATE_MIDDLE template_part_list
+      {
+          ASTList *parts = NULL;
+          parts = ast_list_append(parts, $1);
+          parts = ast_list_append(parts, make_template_string_node($2));
+          $$ = ast_list_concat(parts, $3);
+      }
+  ;
+
 prop_list
   : prop
       { $$ = ast_list_append(NULL, $1); }
@@ -735,10 +902,230 @@ prop_list
   ;
 
 prop
-  : IDENTIFIER ':' assignment_expr
+  : property_name ':' assignment_expr
       { $$ = ast_make_property($1, true, $3); }
-  | STRING ':' assignment_expr
-      { $$ = ast_make_property($1, false, $3); }
+  ;
+
+property_name
+    : IDENTIFIER { $$ = $1; }
+    | property_name_keyword { $$ = $1; }
+    ;
+
+property_name_keyword
+    : STRING     { $$ = $1; }
+    | NUMBER     { $$ = $1; }
+    | DEFAULT    { $$ = strdup("default"); }
+    | IF         { $$ = strdup("if"); }
+    | ELSE       { $$ = strdup("else"); }
+    | FOR        { $$ = strdup("for"); }
+    | WHILE      { $$ = strdup("while"); }
+    | DO         { $$ = strdup("do"); }
+    | FUNCTION   { $$ = strdup("function"); }
+    | VAR        { $$ = strdup("var"); }
+    | LET        { $$ = strdup("let"); }
+    | CONST      { $$ = strdup("const"); }
+    | RETURN     { $$ = strdup("return"); }
+    | BREAK      { $$ = strdup("break"); }
+    | CONTINUE   { $$ = strdup("continue"); }
+    | SWITCH     { $$ = strdup("switch"); }
+    | CASE       { $$ = strdup("case"); }
+    | TRY        { $$ = strdup("try"); }
+    | CATCH      { $$ = strdup("catch"); }
+    | FINALLY    { $$ = strdup("finally"); }
+    | THROW      { $$ = strdup("throw"); }
+    | NEW        { $$ = strdup("new"); }
+    | THIS       { $$ = strdup("this"); }
+    | TYPEOF     { $$ = strdup("typeof"); }
+    | DELETE     { $$ = strdup("delete"); }
+    | IN         { $$ = strdup("in"); }
+    | INSTANCEOF { $$ = strdup("instanceof"); }
+    | VOID       { $$ = strdup("void"); }
+    | WITH       { $$ = strdup("with"); }
+    | DEBUGGER   { $$ = strdup("debugger"); }
+    | TRUE       { $$ = strdup("true"); }
+    | FALSE      { $$ = strdup("false"); }
+    | NULL_T     { $$ = strdup("null"); }
+    | UNDEFINED  { $$ = strdup("undefined"); }
+    ;
+
+binding_initializer_opt
+  : /* empty */
+      { $$ = NULL; }
+  | '=' assignment_expr
+      { $$ = $2; }
+  ;
+
+binding_element
+  : IDENTIFIER binding_initializer_opt
+      { $$ = ast_make_binding_pattern(ast_make_identifier($1), $2); }
+  | object_binding binding_initializer_opt
+      { $$ = ast_make_binding_pattern($1, $2); }
+  | array_binding binding_initializer_opt
+      { $$ = ast_make_binding_pattern($1, $2); }
+  ;
+
+object_binding
+  : '{' '}'
+      { $$ = ast_make_object_binding(NULL); }
+  | '{' binding_property_sequence '}'
+      { $$ = ast_make_object_binding($2); }
+  ;
+
+binding_property_sequence
+  : binding_property_list opt_trailing_comma
+      { $$ = $1; }
+  | binding_property_list ',' binding_rest_property
+      { $$ = ast_list_append($1, $3); }
+  | binding_rest_property
+      { $$ = ast_list_append(NULL, $1); }
+  ;
+
+binding_property_list
+  : binding_property
+      { $$ = ast_list_append(NULL, $1); }
+  | binding_property_list ',' binding_property
+      { $$ = ast_list_append($1, $3); }
+  ;
+
+binding_property
+  : IDENTIFIER ':' binding_element
+      { $$ = ast_make_binding_property($1, true, $3, false); }
+  | property_name_keyword ':' binding_element
+      { $$ = ast_make_binding_property($1, false, $3, false); }
+  | IDENTIFIER binding_initializer_opt
+      {
+          ASTNode *id = ast_make_identifier($1);
+          ASTNode *pattern = ast_make_binding_pattern(id, $2);
+          char *key_copy = strdup(id->data.identifier.name);
+          $$ = ast_make_binding_property(key_copy, true, pattern, true);
+      }
+  ;
+
+binding_rest_property
+  : ELLIPSIS IDENTIFIER
+      { $$ = ast_make_rest_element(ast_make_identifier($2)); }
+  ;
+
+array_binding
+  : '[' ']'
+      { $$ = ast_make_array_binding(NULL); }
+  | '[' binding_element_list opt_trailing_comma ']'
+      { $$ = ast_make_array_binding($2); }
+  | '[' binding_element_list ',' binding_rest_element opt_trailing_comma ']'
+      { $$ = ast_make_array_binding(ast_list_append($2, $4)); }
+  | '[' binding_rest_element opt_trailing_comma ']'
+      { ASTList *list = NULL; list = ast_list_append(list, $2); $$ = ast_make_array_binding(list); }
+  ;
+
+binding_element_list
+  : binding_element
+      { $$ = ast_list_append(NULL, $1); }
+  | binding_element_list ',' binding_element
+      { $$ = ast_list_append($1, $3); }
+  ;
+
+binding_rest_element
+  : ELLIPSIS IDENTIFIER
+      { $$ = ast_make_rest_element(ast_make_identifier($2)); }
+  ;
+
+assignment_pattern
+  : object_assignment_pattern
+      { $$ = ast_make_binding_pattern($1, NULL); }
+  | array_assignment_pattern
+      { $$ = ast_make_binding_pattern($1, NULL); }
+  ;
+
+object_assignment_pattern
+  : '{' '}'
+      { $$ = ast_make_object_binding(NULL); }
+  | '{' assignment_property_sequence '}'
+      { $$ = ast_make_object_binding($2); }
+  ;
+
+assignment_property_sequence
+  : assignment_property_list opt_trailing_comma
+      { $$ = $1; }
+  | assignment_property_list ',' assignment_rest_element
+      { $$ = ast_list_append($1, $3); }
+  | assignment_rest_element
+      { $$ = ast_list_append(NULL, $1); }
+  ;
+
+assignment_property_list
+  : assignment_property
+      { $$ = ast_list_append(NULL, $1); }
+  | assignment_property_list ',' assignment_property
+      { $$ = ast_list_append($1, $3); }
+  ;
+
+assignment_property
+  : IDENTIFIER ':' assignment_element
+      { $$ = ast_make_binding_property($1, true, $3, false); }
+  | property_name_keyword ':' assignment_element
+      { $$ = ast_make_binding_property($1, false, $3, false); }
+  | IDENTIFIER binding_initializer_opt
+      {
+          ASTNode *id = ast_make_identifier($1);
+          ASTNode *pattern = ast_make_binding_pattern(id, $2);
+          char *key_copy = strdup(id->data.identifier.name);
+          $$ = ast_make_binding_property(key_copy, true, pattern, true);
+      }
+  ;
+
+assignment_rest_element
+  : ELLIPSIS postfix_expr
+      { $$ = ast_make_rest_element($2); }
+  ;
+
+array_assignment_pattern
+  : '[' ']'
+      { $$ = ast_make_array_binding(NULL); }
+  | '[' assignment_element_list opt_trailing_comma ']'
+      { $$ = ast_make_array_binding($2); }
+  | '[' assignment_element_list ',' assignment_rest_element opt_trailing_comma ']'
+      { $$ = ast_make_array_binding(ast_list_append($2, $4)); }
+  | '[' assignment_rest_element opt_trailing_comma ']'
+      { ASTList *list = NULL; list = ast_list_append(list, $2); $$ = ast_make_array_binding(list); }
+  ;
+
+assignment_element_list
+  : assignment_element
+      { $$ = ast_list_append(NULL, $1); }
+  | assignment_element_list ',' assignment_element
+      { $$ = ast_list_append($1, $3); }
+  ;
+
+assignment_element
+  : assignment_target binding_initializer_opt
+      { $$ = ast_make_binding_pattern($1, $2); }
+  ;
+
+assignment_target
+  : postfix_expr
+      { $$ = $1; }
+  | object_assignment_pattern
+      { $$ = $1; }
+  | array_assignment_pattern
+      { $$ = $1; }
+  ;
+
+for_binding
+  : VAR for_binding_declarator
+      { ASTList *list = NULL; list = ast_list_append(list, $2); $$ = ast_make_var_stmt(AST_VAR_KIND_VAR, list); }
+  | LET for_binding_declarator
+      { ASTList *list = NULL; list = ast_list_append(list, $2); $$ = ast_make_var_stmt(AST_VAR_KIND_LET, list); }
+  | CONST for_binding_declarator
+      { ASTList *list = NULL; list = ast_list_append(list, $2); $$ = ast_make_var_stmt(AST_VAR_KIND_CONST, list); }
+  ;
+
+for_binding_declarator
+  : IDENTIFIER
+      { $$ = ast_make_var_decl(ast_make_binding_pattern(ast_make_identifier($1), NULL)); }
+  | object_binding
+      { $$ = ast_make_var_decl(ast_make_binding_pattern($1, NULL)); }
+  | array_binding
+      { $$ = ast_make_var_decl(ast_make_binding_pattern($1, NULL)); }
   ;
 
 %%
@@ -752,6 +1139,7 @@ ASTNode *parser_take_ast(void) {
 void yyerror(const char *s) {
     g_parser_error_count++;
     fprintf(stderr, "Syntax error #%d: %s\n", g_parser_error_count, s);
+    diag_record_error(s);
 }
 
 void parser_reset_error_count(void) {

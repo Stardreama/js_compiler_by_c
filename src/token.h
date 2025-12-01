@@ -45,6 +45,10 @@ typedef enum
     TOK_STRING,
     TOK_REGEX,
     TOK_IDENTIFIER,
+    TOK_TEMPLATE_NO_SUB,
+    TOK_TEMPLATE_HEAD,
+    TOK_TEMPLATE_MIDDLE,
+    TOK_TEMPLATE_TAIL,
 
     // 运算符
     TOK_PLUS,        // +
@@ -66,6 +70,8 @@ typedef enum
     TOK_NE,        // !=
     TOK_EQ_STRICT, // ===
     TOK_NE_STRICT, // !==
+    TOK_ARROW,     // =>
+    TOK_ELLIPSIS,  // ...
     TOK_LT,        // <
     TOK_LE,        // <=
     TOK_GT,        // >
@@ -111,9 +117,10 @@ typedef enum
 } TokenType;
 
 // 记录前一个Token类型
-typedef enum {
-    PREV_TOK_CAN_REGEX,  // 前一个Token允许后续跟正则（关键词/标识符/标点/EOF）
-    PREV_TOK_NO_REGEX    // 前一个Token不允许后续跟正则（数字/字符串/正则等）
+typedef enum
+{
+    PREV_TOK_CAN_REGEX, // 前一个Token允许后续跟正则（关键词/标识符/标点/EOF）
+    PREV_TOK_NO_REGEX   // 前一个Token不允许后续跟正则（数字/字符串/正则等）
 } PrevTokenState;
 
 // Token 结构体
@@ -128,13 +135,15 @@ typedef struct
 // 词法分析器状态
 typedef struct
 {
-    const char *input;  // 输入字符串
-    const char *cursor; // 当前位置
-    const char *marker; // re2c 使用的标记
-    int line;           // 当前行号
-    int column;         // 当前列号
-    bool has_newline;   // 自上次 token 以来是否有换行（用于 ASI）
+    const char *input;             // 输入字符串
+    const char *cursor;            // 当前位置
+    const char *marker;            // re2c 使用的标记
+    int line;                      // 当前行号
+    int column;                    // 当前列号
+    bool has_newline;              // 自上次 token 以来是否有换行（用于 ASI）
     PrevTokenState prev_tok_state; // 前Token状态
+    bool in_template_expression;
+    int template_expr_depth;
 } Lexer;
 
 // 函数声明

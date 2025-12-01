@@ -1,406 +1,256 @@
-# JavaScript 编译器项目 - 开发任务清单
+# JavaScript 编译器 ES6 拓展路线图
 
-> **最后更新**: 2025 年 11 月 10 日  
-> **项目状态**: 词法分析器 ✅ | 语法分析器 ✅ | 双可执行程序架构 ✅ | ASI 基础规则 ✅ | AST 构建 ✅ | 语句扩展 ✅ | 运算符扩展 ✅
-
----
-
-## 📊 项目概览
-
-### 已完成功能 (100%)
-
-- ✅ **词法分析器** (lexer.re, 374 行)
-
-  - 27 个 ES5 关键字识别
-  - 73+ 种运算符和分隔符
-  - 数字/字符串字面量解析
-  - 单行和多行注释处理
-  - 行号/列号精确跟踪
-  - 换行标记 `has_newline`（为 ASI 预留）
-
-- ✅ **语法分析器** (parser.y, 317 行)
-
-  - 变量声明（var/let/const）
-  - 函数声明和调用
-  - 控制流（if-else、for、while、do-while、switch、try-catch-finally、with、标签语句）
-  - break / continue（含带标签）与 throw 语句
-  - 表达式（一元、二元、赋值、条件、按位、成员访问、逗号序列）
-  - 数组、对象、数组/对象属性节点与调用表达式
-  - 多层运算符优先级（逻辑、按位、位移、条件、逗号）
-  - 块 vs 对象字面量歧义消解
-  - AST 构建（`ast.h`/`ast.c`）与 `--dump-ast` 调试输出
-
-- ✅ **构建系统**
-
-  - build.bat (Windows) - 6 个命令
-  - Makefile (MSYS2/Linux)
-  - 双可执行程序架构
-
-- ✅ **测试套件**
-
-  - 9 个测试用例全部通过
-  - 词法分析测试
-  - 语法验证测试（含运算符覆盖）
-  - 新增 `test/test_operators.js` 检查复合赋值、按位与三元组合
-  - 错误检测测试
-
-- ✅ **文档**
-  - .github/copilot-instructions.md (AI 指南)
-  - BUILD.md (构建文档)
-  - TEST_REPORT.md (测试报告)
-  - readme.md (项目说明)
+> **最后更新**: 2025 年 11 月 30 日  
+> **目标**: 在现有 ES5 正确性的基础上，逐步补齐 ES6/ES2015 关键语法，使 `test/JavaScript_Datasets` 中的现代样例能够通过解析。
 
 ---
 
-## 🎯 优先级 P1 - ASI（自动分号插入）机制 ✅
+## 0. 当前能力与约束
 
-**重要性**: 🔴 关键功能  
-**难度**: ⭐⭐⭐⭐  
-**完成时间**: 2025 年 11 月 10 日
-
-### 背景说明（P1）
-
-ASI (Automatic Semicolon Insertion) 是 JavaScript 的核心特性，允许省略分号。根据 ECMAScript 11.9 节规范，有三种触发条件：
-
-1. **换行符触发**: 遇到语法错误 token 且前面有换行
-2. **文件结束**: 到达输入流末尾
-3. **受限产生式**: `return`/`break`/`continue`/`throw`/`yield` 后遇到换行
-
-### 任务清单（P1）
-
-- [x] **Task 1.1**: 在适配层实现 ASI 插入逻辑（`parser_lex_adapter.c`）
-
-  - 读取 `lexer->has_newline` 信号并根据 EOF/`}`/受限产生式注入虚拟分号
-  - 维护控制语句括号栈，避免 `if (...)`/`for (...)` 后误插分号
-
-- [x] **Task 1.2**: 受限产生式处理
-
-  - `return`/`break`/`continue`/`throw` 遇到换行、EOF 或 `}` 时强制插入分号
-  - 覆盖 `a\n++b` 等需强制断句的场景
-
-- [x] **Task 1.3**: 测试用例开发
-
-  - 新增 `test/test_asi_basic.js`（链式语句 + `a\n++b`）
-  - 新增 `test/test_asi_return.js`（`return` 换行）
-  - 新增 `test/test_asi_control.js`（验证 `if`/`else` 不误插）
-  - `build.bat`/`Makefile` 扩展 `test-parse` 覆盖上述用例
-
-- [x] **Task 1.4**: 文档更新
-  - 在 BUILD.md 中添加 ASI 功能说明 ✅
-  - 更新 .github/copilot-instructions.md ✅
-  - 新增 `docs/asi_implementation.md` 技术说明 ✅
-
-### 技术参考
-
-- [ECMAScript 5.1 规范 11.9 节](https://262.ecma-international.org/5.1/#sec-11.9)
-- 已实现的基础设施: `lexer->has_newline` 标记
-- 适配层全局状态: `g_lexer` in parser_lex_adapter.c
+- 词法与语法仍以 ES5 子集为准：不支持解构、模板字符串、类、模块等高级语法；`docs/es6_limitations.md` 已列出现状。
+- `parser_lex_adapter.c` 的 ASI 与括号/控制栈设计假设“形参 = 标识符”；扩展时需重新审视触发行列及 `g_brace_stack` 行为。
+- AST (`ast.h/.c`) 仅覆盖传统语法，尚无 `BindingPattern`、`ClassDeclaration`、`TemplateLiteral`、`Import/Export` 等节点类型。
+- 测试框架依赖 `make test path/to/files`；需要通过新增“语法特性分组”来回归（例如 `test/es6_destructuring/*.js`）。
 
 ---
 
-## 🎯 优先级 P2 - AST（抽象语法树）构建
+## 1. 设计原则
 
-**重要性**: 🟡 重要功能  
-**难度**: ⭐⭐⭐⭐⭐  
-**完成时间**: 2025 年 11 月 10 日
-
-### 背景说明（P2）
-
-当前解析器仅做语法验证（parser.y 的语义动作为空），需要构建 AST 才能支持后续的语义分析、代码生成或解释执行。
-
-### 任务清单（P2）
-
-- [x] **Task 2.1**: 设计 AST 节点结构
-
-  - 创建 `ast.h` 定义节点类型、枚举和 `ASTList`
-  - 统一内存管理策略，通过专用释放函数回收节点
-
-- [x] **Task 2.2**: 实现 AST 构建函数
-
-  - 在 `ast.c` 中实现 `ast_make_program/var_decl/function/binary/...`
-  - 支持数组、对象字面量、属性节点和调用/成员表达式
-
-- [x] **Task 2.3**: 在 parser.y 中添加语义动作
-
-  - 为语句/表达式规则补全语义动作，生成对应 AST 节点
-  - 维护 `parser_take_ast()` 以在解析完成后提取根节点
-
-- [x] **Task 2.4**: 实现 AST 遍历和打印
-
-  - 提供 `ast_print`（缩进输出）、`ast_traverse`（DFS）与 `ast_free`
-  - 引入列表帮助函数 `ast_list_append/concat/free`
-
-- [x] **Task 2.5**: 集成到主程序
-
-  - `parser_main.c` 支持 `--dump-ast` 参数并调用 `ast_print`
-  - `js_parser.exe` 默认仍执行语法校验，保持向后兼容
-
-- [x] **Task 2.6**: 测试和文档
-  - `build.bat test-parse` / `make test-parse` 全量通过，额外运行 `--dump-ast` 烟囱验证
-  - 更新 `BUILD.md`、本 TO-DO 文档等，记录 AST 构建与调试流程
+1. **对齐规范**：参照 ECMA-262 第 6 版（2015）章节顺序扩展，不盲目跳跃，确保每个里程碑有完整语法+AST+测试+文档。
+2. **最小破坏**：尽量在适配层/AST 中引入 feature flag 或能力探针，避免一次性重写全部语法；必要时保持 ES5 行为默认开启。
+3. **成对迭代**：凡是 lexer 新 token → parser 规则 → AST 节点 → `--dump-ast` → 测试数据，必须一次完成，防止“半成品”污染主干。
+4. **回归优先**：每个里程碑须新增针对性的 `goodjs` 抽样 + 手写用例，以便定位 regressions。
 
 ---
 
-## 🎯 优先级 P3 - 扩展语句覆盖 ✅
+## 2. 里程碑导航
 
-**重要性**: 🟢 增强功能  
-**难度**: ⭐⭐⭐  
-**完成时间**: 2025 年 11 月 10 日
+| 编号 | 主题               | 主要语法                              | 关键文件                                            |
+| ---- | ------------------ | ------------------------------------- | --------------------------------------------------- |
+| M0   | 基础加固           | re2c/bison 警告、测试分组、诊断       | `lexer.re`, `Makefile`, `docs/error_diagnostics.md` |
+| M1   | Binding Pattern    | 解构、默认值、rest                    | `parser.y`, `ast.[ch]`, `parser_lex_adapter.c`      |
+| M2   | 参数系统与箭头函数 | 完整箭头函数、函数默认值、rest 形参   | 同上                                                |
+| M3   | 模板字符串         | TemplateLiteral、Tagged Template      | `lexer.re`, `ast.[ch]`, `parser.y`                  |
+| M4   | 类与增强对象字面量 | class、extends、super、计算属性       | `parser.y`, `ast.[ch]`, `docs/parser.md`            |
+| M5   | 迭代协议扩展       | for-of、Spread/Rest、Generator、yield | `lexer.re`, `parser.y`, `ast.[ch]`                  |
+| M6   | 模块与顶层 await   | import/export、default、命名空间      | `parser.y`, `ast.[ch]`, `parser_main.c`             |
 
-### 成果概览（P3）
-
-- `parser.y` 补齐 while / do-while / switch-case / try-catch-finally / with / 标签语句 等 ES5 语句形态，新增 break、continue（含带标签）与 throw 语义动作。
-- `ast.h` / `ast.c` 增加相应节点类型（如 `AST_WHILE_STMT`、`AST_SWITCH_STMT`、`AST_TRY_STMT`、`AST_WITH_STMT` 等），打印、遍历、释放逻辑同步扩展。
-- 新增测试用例 `test/test_while.js`、`test/test_switch.js`、`test/test_try.js`，覆盖循环跳转、case fall-through、异常处理与 with 语句。
-- `build.bat` / `Makefile` 的 `test-parse` 目标现默认执行全部 8 个正向场景，快速验证全量语句支持。
-
-### 任务清单（P3）
-
-- [x] **Task 3.1**: while 循环
-
-  - 在 parser.y 中添加 while 语法规则并构建 `AST_WHILE_STMT`
-  - 创建 `test/test_while.js` 覆盖嵌套循环与 break/continue
-
-- [x] **Task 3.2**: do-while 循环
-
-  - 在 parser.y 中添加 do-while 语义动作，兼容无分号场景
-  - 与 `test/test_while.js` 共用场景验证 ASI 行为
-
-- [x] **Task 3.3**: switch-case 语句
-
-  - 支持 case/default 子句列表与 fall-through
-  - `test/test_switch.js` 验证 default、连续 case、break
-
-- [x] **Task 3.4**: try-catch-finally 异常处理
-
-  - 构建 `AST_TRY_STMT`、`AST_CATCH_CLAUSE`，支持可选 finally
-  - `test/test_try.js` 验证 catch 参数绑定与 finally 必执行
-
-- [x] **Task 3.5**: with 语句
-
-  - 在 parser.y/AST 中加入 with 语义
-  - `test/test_try.js` 结合 with 场景验证
-
-- [x] **Task 3.6**: 标签语句和 labeled break/continue
-  - 实现 `IDENTIFIER ':' stmt`、`break label`、`continue label`
-  - `test/test_while.js` 验证带标签跳转
-
-### 问题与修复记录（P3）
-
-- **with 语句解析失败（已解决）**
-  - **现象**: `test/test_try.js` 在解析 `with (obj) { ... }` 时抛出 `unexpected ';', expecting '}'` 错误。
-  - **原因**: 适配层的 ASI 逻辑在对象字面量的闭合 `}` 前误插入分号，导致解析堆栈提前结束。
-  - **修复**: 在 `parser_lex_adapter.c` 新增括号类型栈，区分语句块与对象字面量；仅在退出语句块时允许自动插入分号，避免对象字面量被破坏。
-  - **验证**: `build.bat test-parse` 全量通过，`test/test_try.js` 成功覆盖 try/catch/finally + with 组合场景。
-
-### 技术要点
-
-- 词法分析器原生支持相关关键字，无需额外修改。
-- 适配层 ASI 逻辑已覆盖 `break` / `continue` / `throw`，扩展后无需额外变更。
-- 新增 AST 节点统一接入 `ast_traverse`、`ast_print`、`ast_free`，保证调试与内存管理一致。
+以下章节详细拆解各里程碑。
 
 ---
 
-## 🎯 优先级 P4 - 完整运算符支持 ✅
+## M0. 基础加固（准备阶段）
 
-**重要性**: 🟢 增强功能  
-**难度**: ⭐⭐⭐  
-**完成时间**: 2025 年 11 月 10 日
+1. **工具告警清理**
 
-### 成果概览（P4）
+- 处理 `lexer.re` sentinel 警告，显式配置 `re2c:sentinel = 0`，确保新增状态机时无噪音。
+- 在 `parser.y` 中使用 `%expect` 锁定当前冲突数，以免 ES6 扩展时误引入新的 S/R 冲突而不自知。
 
-- `parser.y` 新增条件表达式、按位/位移表达式、逗号表达式与全量复合赋值规则，统一调整优先级声明。
-- `ast.h` / `ast.c` 添加 `AST_CONDITIONAL_EXPR`、`AST_SEQUENCE_EXPR` 节点，完善遍历、打印与释放流程。
-- 扩展一元运算支持 `typeof` / `delete` / `void`，并将 `test/test_operators.js` 纳入 `build.bat` / `Makefile` 的 `test-parse` 验证。
+2. **诊断与日志**
 
-### 任务清单（P4）
+- 扩展 `diagnostics.c`，记录 token 文本与上下文片段，为复杂结构（模板字面量、类体）调试提供依据。
+- 在 `docs/error_diagnostics.md` 中新增“如何定位 ES6 失败”的流程（利用 feature gate + 日志）。
 
-- [x] **Task 4.1**: 三元条件运算符 `? :`
+3. **测试分层**
 
-  - 在 parser.y 中添加条件表达式，并验证嵌套三元运算符
+- 新增 `test/es5_baseline/` 与 `test/es6_stageX/` 目录，并调整 Makefile 允许 `make test target=es6_stage1` 形式分批执行。
 
-- [x] **Task 4.2**: 位运算符
-
-  - 支持 `& | ^` 与 `<< >> >>>`，并安置在逻辑运算与算术运算之间
-
-- [x] **Task 4.3**: 复合赋值运算符
-
-  - 映射 `+= -= *= /= %= &= |= ^= <<= >>= >>>=` 至 `AST_ASSIGN_EXPR`
-
-- [x] **Task 4.4**: 逗号运算符
-
-  - 引入 `ast_make_sequence`，支持左递归拼接并在 AST 中生成 `SequenceExpression`
-
-- [x] **Task 4.5**: typeof、delete、void 运算符
-  - 为一元表达式添加三种前缀关键字，并保持 `expr_no_obj` 变体一致
-
-### 测试与验证
-
-- ✅ 新增 `test/test_operators.js` 覆盖复合赋值、按位、位移、三元与逗号等场景
-- ✅ `build.bat test-parse` / `make test-parse` 默认执行运算符回归测试
+> ✅ 完成后再切入后续特性，避免“地基不稳”。
 
 ---
 
-## 🎯 优先级 P5 - 高级特性
+## M1. Binding Pattern & 解构赋值
 
-**重要性**: 🔵 可选功能  
-**难度**: ⭐⭐⭐⭐⭐  
-**预计工时**: 10+ 天
+**目标**: 支持对象/数组解构、默认值和 `rest` 绑定，覆盖变量声明、赋值表达式、`for-in/of` 头部、函数形参。
 
-### 任务清单（P5）
+任务拆解：
 
-- [ ] **Task 5.1**: 正则表达式字面量
+1. **AST 设计**
 
-  - 实现上下文感知词法分析（区分 `/` 除法与正则开头）
-  - 在词法分析器中维护前一个 token 类型
-  - 添加正则表达式标志（g、i、m、u、y）解析
-  - **难点**: 需要词法-语法协同判断
+- [x] 新增 `AST_BINDING_PATTERN`, `AST_OBJECT_BINDING`, `AST_ARRAY_BINDING`, `AST_BINDING_PROPERTY`, `AST_REST_ELEMENT`, `AST_ARRAY_HOLE` 节点。
+- [x] 更新 `ast_print/ast_free`，确保递归结构无泄漏，支持 `--dump-ast`。
 
-- [ ] **Task 5.2**: 模板字符串（ES6）
+2. **语法扩展**
 
-  - 支持反引号 `` ` `` 字符串
-  - 实现 `${...}` 插值表达式
-  - 需要状态机或递归处理嵌套
-  - **难点**: 插值内部可包含任意表达式
+- [x] `var_decl`、函数/箭头形参、`catch_clause`、`for_in_left` 接入 `binding_element`。
+- [x] `lexer.re`/`parser_lex_adapter.c` 支持 `...` 并维护 brace stack，避免 ASI 误触发。
+- [ ] `assignment_expr` 的解构赋值；当前仍依赖 `test_error_destructuring_assign.js` 追踪缺口。
 
-- [ ] **Task 5.3**: 箭头函数（ES6）
+3. **测试/回归**
 
-  - 支持 `() => expr` 和 `() => { stmt }` 语法
-  - 处理参数解构和默认值
-  - **难点**: 与小于号 `<` 的歧义消解
-
-- [ ] **Task 5.4**: 类声明（ES6）
-
-  - 支持 `class Name { ... }` 语法
-  - 构造函数、方法、静态方法
-  - 继承 `extends` 和 `super`
-
-- [ ] **Task 5.5**: async/await（ES8）
-
-  - 支持异步函数声明
-  - await 表达式解析
-
-- [ ] **Task 5.6**: 解构赋值（ES6）
-
-  - 数组解构 `[a, b] = [1, 2]`
-  - 对象解构 `{x, y} = obj`
-
-- [ ] **Task 5.7**: 扩展运算符（ES6）
-  - 扩展语法 `...args`
-  - 在函数调用、数组、对象中的应用
-
-### 技术挑战
-
-- 这些特性大多属于 ES6+，超出当前 ES5 范围
-- 需要权衡是否值得投入（可能需要重构现有架构）
-- 建议：先完成 P1-P4，再评估是否实现
+- [x] `test/es6_stage1/{destructuring_var,destructuring_params,catch_binding,destructuring_for_in}.js` 作为正向用例。
+- [x] 将赋值用例迁入 `test_error_destructuring_assign.js`，在 `make test test/es6_stage1` 中标记“预期失败”。
+- [ ] 补充 `goodjs` 抽样与更复杂的嵌套 for-in/of 场景。
 
 ---
 
-## 🐛 已知问题和改进
+## M2. 参数系统 & 箭头函数增强
 
-### 编译警告（低优先级）
+**目标**: 支持所有 ES6 形参语法，以及表达式体/块体箭头函数、隐式 return、`this` 绑定差异。
 
-- [ ] **Issue 1**: re2c sentinel 警告 (lexer.re:82)
+任务拆解：
 
-  - 不影响功能
-  - 可通过添加 `re2c:sentinel` 配置解决
+1. **词法**
 
-- [ ] **Issue 2**: Bison 2 项冲突警告
+- 确认 `=>` token 在压缩代码中不会被 ASI 误切分；必要时在 `lexer.re` 中增加 `lookahead` 处理。
 
-  - 不影响功能
-  - 可添加 `%expect 2` 指令消除警告
-  - 或通过更精确的语法规则解决
+2. **语法/AST**
 
-- [ ] **Issue 3**: 未使用变量 comment_start (lexer.re:89)
-  - 删除未使用的变量
+- `arrow_function` 允许 `binding_element` 参数列表与单参数解构形式。
+- 函数声明/表达式形参列表加入 `param_initializer`、`rest_param` 语义动作。
+- 在 AST 中区分 `AST_ARROW_FUNCTION` 与普通函数，记录 `is_expression_body` 以便后续生成器/async 扩展。
 
-### 代码质量改进
+3. **ASI 调整**
 
-- [ ] **Task Q1**: 添加单元测试框架
+- 当 `=>` 前存在换行时，需要参照规范（LineTerminator 不能出现在 `=>` 前）。适配层需阻止在 `)`→`=>` 之间插入分号。
 
-  - 集成 CTest 或其他 C 测试框架
-  - 为词法分析器编写单元测试
-  - 为语法分析器编写单元测试
+4. **测试**
 
-- [ ] **Task Q2**: 改进错误报告
-
-  - 实现更友好的错误信息格式
-  - 添加代码片段高亮显示错误位置
-  - 提供错误修复建议（Did you mean...）
-
-- [ ] **Task Q3**: 性能优化
-
-  - 词法分析器性能分析
-  - 减少 Token 内存分配次数
-  - 优化字符串复制操作
-
-- [ ] **Task Q4**: 代码重构
-  - 统一命名约定
-  - 添加详细的代码注释
-  - 分离接口和实现（.h 和 .c）
+- `test/es6_stage2/arrow_functions.js`：覆盖单参数省略括号、解构参数、默认值、rest、嵌套箭头。
+- 负例：`(a\n)=>{}` 应报错以符合规范。
 
 ---
 
-## 📚 文档改进
+## M3. 模板字符串与 Tagged Template
 
-- [ ] **Doc 1**: 编写架构设计文档
+**目标**: 让 `TEMPLATE_HEAD/MIDDLE/TAIL` token 形成完整 `TemplateLiteral`/`TemplateElement` AST，并支持 `tag` 调用链。
 
-  - 详细说明词法-语法适配层设计
-  - 解释歧义消解策略
-  - 记录设计决策和权衡
+任务拆解：
 
-- [ ] **Doc 2**: 添加贡献指南 (CONTRIBUTING.md)
+1. **lexer.re**
 
-  - 代码风格规范
-  - Pull Request 流程
-  - 测试要求
+- 引入模板字面量状态机，跟踪 `${` 嵌套层级，与现有 `in_template_expression` 字段合并。
+- 允许 Unicode 转义与行内换行，不再把反引号内容拆成多行 token。
 
-- [ ] **Doc 3**: 创建开发者指南 (DEVELOPMENT.md)
+2. **parser.y/AST**
 
-  - 调试技巧
-  - 常见问题解答
-  - 工具链详细说明
+- 新增 `template_literal` 规则，返回 `AST_TEMPLATE_LITERAL`（含 `quasis` 与 `expressions` 列表）。
+- 支持 `tag template_literal` 组合生成 `AST_TAGGED_TEMPLATE`。
 
-- [ ] **Doc 4**: API 文档生成
-  - 使用 Doxygen 生成 API 文档
-  - 为所有公共函数添加文档注释
+3. **适配层**
 
----
+- 在模板插值结束 `}` → `` ` `` 之间，禁止自动插分号；需要额外的状态位标识“模板字面量上下文”。
 
-## 🧪 测试扩展
+4. **测试**
 
-- [x] **Test 1**: 创建完整的测试套件
-
-  - 新增正向用例：`test/test_functions.js`（函数声明/调用链）、`test/test_for_loops.js`（多种 for 结构）、`test/test_literals.js`（对象/数组文字与访问）
-  - 新增负向用例：`test/test_error_unclosed_block.js`、`test/test_error_invalid_for.js`（覆盖缺失 `}` / `)` 错误路径）
-  - `build.bat test-parse` / `make test-parse` 默认跑通 12 个正向场景
-
-- [ ] **Test 2**: 模糊测试 (Fuzzing)
-
-  - 使用 AFL 或 libFuzzer 进行模糊测试
-  - 发现潜在的崩溃和内存问题
-
-- [ ] **Test 3**: 与标准引擎对比测试
-  - 收集真实 JavaScript 代码样本
-  - 与 V8、SpiderMonkey 对比解析结果
-  - 确保兼容性
+- `test/es6_stage3/template_basic.js`, `template_tagged.js`, `template_asi.js` 等。
 
 ---
 
-## 🔧 工具和基础设施
+## M4. 类、增强对象字面量与 super
 
-- [ ] **Tool 1**: 持续集成 (CI/CD)
+**目标**: 覆盖 `class` 声明/表达式、`extends`、构造器、方法定义、静态属性、`super` 调用，以及对象字面量中的简写/计算属性。
 
-  - 配置 GitHub Actions 自动构建
-  - 在多平台测试（Windows、Linux、macOS）
-  - 自动运行测试套件
+任务拆解：
 
-- [ ] **Tool 2**: 静态分析
+1. **lexer.re**
 
-  - 集成 Clang Static Analyzer
-  - 使用 Valgrind 检测内存泄漏
-  - Cppcheck 代码质量检查
+- 添加关键字 `class`, `extends`, `super`，并确保保留字集合同步更新。
+
+2. **AST**
+
+- 新增 `AST_CLASS_DECL`, `AST_CLASS_EXPR`, `AST_METHOD_DEF`, `AST_SUPER`, `AST_COMPUTED_PROP`。
+
+3. **语法**
+
+- `class_declaration` 支持可选 `extends`，类体由 `class_element` 列表组成。
+- 对象字面量中加入 `method_definition`, `shorthand_property`, `computed_property_name`。
+
+4. **适配层/ASI**
+
+- 类体 `{` 与对象字面量 `{` 需要新的种类区分，以避免 `}` 后误插 `;` 破坏 `class A {}` `export default class {}` 等结构。
+
+5. **测试**
+
+- `test/es6_stage4/class_basic.js`, `class_inheritance.js`, `object_literal_enhancement.js`。
+
+---
+
+## M5. 迭代协议、Generator、Spread/Rest、for-of
+
+**目标**: 引入迭代相关语法，使 `for-of`, `yield`, `yield*`, `...` spread 与 rest 均可解析。
+
+任务拆解：
+
+1. **lexer.re**
+
+- 新增 `...` spread token（若未完全支持），以及关键字 `yield`, `of`（上下文关键字）。
+
+2. **语法/AST**
+
+- `for_stmt` 新增 `for_of_stmt` 产生式，复用 M1 的 binding pattern。
+- `function` 与 `generator_function` 区分：`function*`、`yield` 表达式（含 `yield*`）。
+- `spread_element` 用于数组/调用表达式。
+
+3. **ASI**
+
+- `yield` 属于受限产生式，需要加入 `is_restricted_token` 列表，防止 `yield\n1` 被错误解析。
+
+4. **测试**
+
+- `test/es6_stage5/for_of.js`, `generators.js`, `spread.js`, `rest_in_objects.js`。
+
+---
+
+## M6. 模块、顶层 await 与其他 ES6+ 补全
+
+**目标**: 使编译器能够解析 `import/export`、`default`、`export *`, 以及（可选）`async function`、`await`。
+
+任务拆解：
+
+1. **词法**
+
+- 关键字：`import`, `export`, `from`, `as`, `default`, `async`, `await`。注意 `await` 仅在 async 函数内为关键字。
+
+2. **语法/AST**
+
+- 新增 `AST_IMPORT_DECL`, `AST_EXPORT_DECL`, `AST_EXPORT_ALL`, `AST_IMPORT_SPEC`, `AST_EXPORT_SPEC`。
+- 支持 `export default class/function/expression`、`import("module")`（动态导入可暂缓）。
+- 若引入 `async function`，需在 AST 中标识 `is_async`，并允许 `await` 表达式。
+
+3. **入口与命令行**
+
+- `parser_main.c` 可添加 `--module` 标志，决定是否允许 `import`/`export` 出现在顶层。
+
+4. **测试**
+
+- `test/es6_stage6/modules_basic.js`, `export_variants.js`, `async_await.js`。
+
+---
+
+## 3. 横切关注点
+
+1. **文档同步**
+
+- 每个里程碑结束后更新：`docs/parser.md`（新增语法）、`docs/es6_limitations.md`（已支持 vs 待支持）、`README`（能力矩阵）。
+
+2. **性能与内存**
+
+- 新语法会显著增加 AST 节点数量，需在 `ast_free` 中加入压力测试；建议在 `build.bat` 中新增 `test-memory` 目标，运行 parse → free 循环以发现泄漏。
+
+3. **CI/回归**
+
+- 当引入模块/类等特性后，`goodjs` 目录中的失败列表应写入 `build/parser_error_locations.log` 供比对；可以新增脚本统计“解析成功率”。
+
+---
+
+## 4. 参考资料
+
+- 《ECMAScript 2015 Language Specification》章节 12~15（解构、函数、类、模块）。
+- `esprima`, `acorn` 等开源解析器，可参考其 BNF 与 AST 设计。
+- `docs/es6_limitations.md`：持续更新未覆盖语法与定位示例。
+
+---
+
+**下一步建议**
+
+1. 完成 M0 基础加固与测试分层，建立可持续的回归环境。
+2. 以 M1 解构为切入点（该特性阻塞了 `goodjs` 中最多的文件），逐步验证后推进后续里程碑。
+3. 每完成一个里程碑，务必在 `todo.md` 中打勾并新增下一阶段的失败样例说明，确保团队对当前支持范围达成共识。
+
+- 集成 Clang Static Analyzer
+- 使用 Valgrind 检测内存泄漏
+- Cppcheck 代码质量检查
 
 - [ ] **Tool 3**: 代码覆盖率
 

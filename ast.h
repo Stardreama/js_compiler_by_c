@@ -9,10 +9,13 @@ typedef enum
     AST_PROGRAM,
     AST_BLOCK,
     AST_VAR_DECL,
+    AST_VAR_STMT,
     AST_FUNCTION_DECL,
+    AST_FUNCTION_EXPR,
     AST_RETURN_STMT,
     AST_IF_STMT,
     AST_FOR_STMT,
+    AST_FOR_IN_STMT,
     AST_WHILE_STMT,
     AST_DO_WHILE_STMT,
     AST_SWITCH_STMT,
@@ -25,12 +28,14 @@ typedef enum
     AST_EXPR_STMT,
     AST_EMPTY_STMT,
     AST_IDENTIFIER,
+    AST_THIS,
     AST_LITERAL,
     AST_ASSIGN_EXPR,
     AST_BINARY_EXPR,
     AST_CONDITIONAL_EXPR,
     AST_SEQUENCE_EXPR,
     AST_UNARY_EXPR,
+    AST_NEW_EXPR,
     AST_UPDATE_EXPR,
     AST_CALL_EXPR,
     AST_MEMBER_EXPR,
@@ -38,7 +43,13 @@ typedef enum
     AST_OBJECT_LITERAL,
     AST_PROPERTY,
     AST_SWITCH_CASE,
-    AST_CATCH_CLAUSE
+    AST_CATCH_CLAUSE,
+    AST_BINDING_PATTERN,
+    AST_OBJECT_BINDING,
+    AST_ARRAY_BINDING,
+    AST_BINDING_PROPERTY,
+    AST_REST_ELEMENT,
+    AST_ARRAY_HOLE
 } ASTNodeType;
 
 typedef enum
@@ -52,6 +63,7 @@ typedef enum
 {
     AST_LITERAL_NUMBER,
     AST_LITERAL_STRING,
+    AST_LITERAL_REGEX,
     AST_LITERAL_BOOLEAN,
     AST_LITERAL_NULL,
     AST_LITERAL_UNDEFINED
@@ -86,16 +98,24 @@ struct ASTNode
         } block;
         struct
         {
-            ASTVarKind kind;
-            char *name;
-            ASTNode *init;
+            ASTNode *binding;
         } var_decl;
+        struct {
+            ASTVarKind kind;
+            ASTList *decls;
+        } var_stmt;
         struct
         {
             char *name;
             ASTList *params;
             ASTNode *body;
         } function_decl;
+        struct
+        {
+            char *name;
+            ASTList *params;
+            ASTNode *body;
+        } function_expr;
         struct
         {
             ASTNode *argument;
@@ -113,6 +133,12 @@ struct ASTNode
             ASTNode *update;
             ASTNode *body;
         } for_stmt;
+        struct
+        {
+            ASTNode *init;
+            ASTNode *obj;
+            ASTNode *body;
+        } for_in_stmt;
         struct
         {
             ASTNode *test;
@@ -166,6 +192,9 @@ struct ASTNode
         } identifier;
         struct
         {
+        } this_expr;
+        struct
+        {
             ASTLiteralType literal_type;
             union
             {
@@ -203,6 +232,11 @@ struct ASTNode
         } unary;
         struct
         {
+            ASTNode *callee;
+            ASTList *arguments;
+        } new_expr;
+        struct
+        {
             const char *op;
             ASTNode *argument;
             bool prefix;
@@ -215,7 +249,7 @@ struct ASTNode
         struct
         {
             ASTNode *object;
-            char *property;
+            ASTNode *property;
             bool computed;
         } member_expr;
         struct
@@ -239,9 +273,35 @@ struct ASTNode
         } switch_case;
         struct
         {
-            char *param;
+            ASTNode *param;
             ASTNode *body;
         } catch_clause;
+        struct
+        {
+            ASTNode *target;
+            ASTNode *initializer;
+        } binding_pattern;
+        struct
+        {
+            ASTList *properties;
+        } object_binding;
+        struct
+        {
+            ASTList *elements;
+        } array_binding;
+        struct
+        {
+            ASTPropertyKey key;
+            ASTNode *value;
+            bool is_shorthand;
+        } binding_property;
+        struct
+        {
+            ASTNode *argument;
+        } rest_element;
+        struct
+        {
+        } array_hole;
     } data;
 };
 
@@ -253,18 +313,21 @@ void ast_list_free(ASTList *list);
 
 ASTNode *ast_make_program(ASTList *body);
 ASTNode *ast_make_block(ASTList *body);
-ASTNode *ast_make_var_decl(ASTVarKind kind, char *name, ASTNode *init);
+ASTNode *ast_make_var_decl(ASTNode *binding);
+ASTNode *ast_make_var_stmt(ASTVarKind kind, ASTList *decls);
 ASTNode *ast_make_function_decl(char *name, ASTList *params, ASTNode *body);
+ASTNode *ast_make_function_expr(char *name, ASTList *params, ASTNode *body);
 ASTNode *ast_make_return(ASTNode *argument);
 ASTNode *ast_make_if(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
 ASTNode *ast_make_for(ASTNode *init, ASTNode *test, ASTNode *update, ASTNode *body);
+ASTNode *ast_make_for_in(ASTNode *init, ASTNode *obj, ASTNode *body);
 ASTNode *ast_make_while(ASTNode *test, ASTNode *body);
 ASTNode *ast_make_do_while(ASTNode *body, ASTNode *test);
 ASTNode *ast_make_switch(ASTNode *discriminant, ASTList *cases);
 ASTNode *ast_make_switch_case(ASTNode *test, ASTList *consequent);
 ASTNode *ast_make_switch_default(ASTList *consequent);
 ASTNode *ast_make_try(ASTNode *block, ASTNode *handler, ASTNode *finalizer);
-ASTNode *ast_make_catch(char *param, ASTNode *body);
+ASTNode *ast_make_catch(ASTNode *param, ASTNode *body);
 ASTNode *ast_make_with(ASTNode *object, ASTNode *body);
 ASTNode *ast_make_labeled(char *label, ASTNode *body);
 ASTNode *ast_make_break(char *label);
@@ -273,8 +336,11 @@ ASTNode *ast_make_throw(ASTNode *argument);
 ASTNode *ast_make_expression_stmt(ASTNode *expression);
 ASTNode *ast_make_empty_statement(void);
 ASTNode *ast_make_identifier(char *name);
+ASTNode *ast_make_this_expr(void);
 ASTNode *ast_make_number_literal(char *raw);
 ASTNode *ast_make_string_literal(char *raw);
+ASTNode *ast_make_string_literal_raw(char *raw);
+ASTNode *ast_make_regex_literal(char *raw);
 ASTNode *ast_make_boolean_literal(bool value);
 ASTNode *ast_make_null_literal(void);
 ASTNode *ast_make_undefined_literal(void);
@@ -283,12 +349,19 @@ ASTNode *ast_make_binary(const char *op, ASTNode *left, ASTNode *right);
 ASTNode *ast_make_conditional(ASTNode *test, ASTNode *consequent, ASTNode *alternate);
 ASTNode *ast_make_sequence(ASTNode *left, ASTNode *right);
 ASTNode *ast_make_unary(const char *op, ASTNode *argument);
+ASTNode *ast_make_new_expr(ASTNode *callee, ASTList *arguments);
 ASTNode *ast_make_update(const char *op, ASTNode *argument, bool prefix);
 ASTNode *ast_make_call(ASTNode *callee, ASTList *arguments);
-ASTNode *ast_make_member(ASTNode *object, char *property, bool computed);
+ASTNode *ast_make_member(ASTNode *object, ASTNode *property, bool computed);
 ASTNode *ast_make_array_literal(ASTList *elements);
 ASTNode *ast_make_object_literal(ASTList *properties);
 ASTNode *ast_make_property(char *key, bool is_identifier, ASTNode *value);
+ASTNode *ast_make_binding_pattern(ASTNode *target, ASTNode *initializer);
+ASTNode *ast_make_object_binding(ASTList *properties);
+ASTNode *ast_make_array_binding(ASTList *elements);
+ASTNode *ast_make_binding_property(char *key, bool is_identifier, ASTNode *value, bool is_shorthand);
+ASTNode *ast_make_rest_element(ASTNode *argument);
+ASTNode *ast_make_array_hole(void);
 
 void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata);
 void ast_print(const ASTNode *node);

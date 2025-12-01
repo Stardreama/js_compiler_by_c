@@ -140,3 +140,17 @@ cd d:\EduLibrary\OurEDA\js_compiler_by_c
 - 语法（`js_parser.exe`）：在 Token 基础上进行结构化规则匹配；遇到结构不合法时报 “Syntax error: … unexpected …, expecting …”。
 
 两者独立构建、互不影响，建议在定位语法问题时先确认词法输出是否符合预期。
+
+---
+
+## 9. Binding Pattern 支持概览（2025-12 更新）
+
+- **新增 AST 节点**：`AST_BINDING_PATTERN`、`AST_OBJECT_BINDING`、`AST_ARRAY_BINDING`、`AST_BINDING_PROPERTY`、`AST_REST_ELEMENT`、`AST_ARRAY_HOLE`，配套 `ast_make_* / ast_print / ast_free` 均已实现，可通过 `js_parser.exe --dump-ast ...` 观察树结构。
+- **语法覆盖**：
+  - 变量声明：`var/let/const { a: x = 1, ...rest } = expr;`
+  - 函数/箭头形参：`function f({ x, y = 1 }, [head, ...tail]) {}`、`({ value }) => value`。
+  - `catch` 绑定：`catch ({ message, info: { code = 0 } }) {}`。
+  - `for-in` 头部：`for (const { key } in source) { ... }`、`for (let [entry] in dict) { ... }`。
+- **词法/ASI 调整**：词法器提供 `TOK_ELLIPSIS`，适配层在 `...`、`{`、`}` 场景下维护 brace stack，避免在解构上下文中误插分号。
+- **测试套件**：`make test test/es6_stage1` 会运行四个正向用例与一个 `test_error_destructuring_assign.js` 负例，必要时可使用 `build/parser_error_locations.log` 查看失败定位。
+- **已知限制**：解构赋值表达式（`({a} = expr)`、`[a] = expr`）仍未实现；对应文件目前保持 `test_error_*` 命名以提醒该语法尚未开放。

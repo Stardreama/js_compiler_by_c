@@ -83,10 +83,9 @@ ASTNode *ast_make_block(ASTList *body) {
     return node;
 }
 
-ASTNode *ast_make_var_decl(char *name, ASTNode *init) {
+ASTNode *ast_make_var_decl(ASTNode *binding) {
     ASTNode *node = ast_alloc(AST_VAR_DECL);
-    node->data.var_decl.name = name;
-    node->data.var_decl.init = init;
+    node->data.var_decl.binding = binding;
     return node;
 }
 
@@ -95,6 +94,53 @@ ASTNode *ast_make_var_stmt(ASTVarKind kind, ASTList *decls) {
     node->data.var_stmt.kind = kind;
     node->data.var_stmt.decls = decls;
     return node;
+}
+
+ASTNode *ast_make_binding_pattern(ASTNode *target, ASTNode *initializer) {
+    ASTNode *node = ast_alloc(AST_BINDING_PATTERN);
+    node->data.binding_pattern.target = target;
+    node->data.binding_pattern.initializer = initializer;
+    return node;
+}
+
+ASTNode *ast_make_object_binding(ASTList *properties) {
+    ASTNode *node = ast_alloc(AST_OBJECT_BINDING);
+    node->data.object_binding.properties = properties;
+    return node;
+}
+
+ASTNode *ast_make_array_binding(ASTList *elements) {
+    ASTNode *node = ast_alloc(AST_ARRAY_BINDING);
+    node->data.array_binding.elements = elements;
+    return node;
+}
+
+ASTNode *ast_make_binding_property(char *key, bool is_identifier, ASTNode *value, bool is_shorthand) {
+    ASTNode *node = ast_alloc(AST_BINDING_PROPERTY);
+    if (is_identifier) {
+        node->data.binding_property.key.name = key;
+        node->data.binding_property.key.is_identifier = true;
+    } else {
+        if (key && (key[0] == '\'' || key[0] == '"')) {
+            node->data.binding_property.key.name = strip_quotes(key);
+        } else {
+            node->data.binding_property.key.name = key;
+        }
+        node->data.binding_property.key.is_identifier = false;
+    }
+    node->data.binding_property.value = value;
+    node->data.binding_property.is_shorthand = is_shorthand;
+    return node;
+}
+
+ASTNode *ast_make_rest_element(ASTNode *argument) {
+    ASTNode *node = ast_alloc(AST_REST_ELEMENT);
+    node->data.rest_element.argument = argument;
+    return node;
+}
+
+ASTNode *ast_make_array_hole(void) {
+    return ast_alloc(AST_ARRAY_HOLE);
 }
 
 ASTNode *ast_make_function_decl(char *name, ASTList *params, ASTNode *body) {
@@ -189,7 +235,7 @@ ASTNode *ast_make_try(ASTNode *block, ASTNode *handler, ASTNode *finalizer) {
     return node;
 }
 
-ASTNode *ast_make_catch(char *param, ASTNode *body) {
+ASTNode *ast_make_catch(ASTNode *param, ASTNode *body) {
     ASTNode *node = ast_alloc(AST_CATCH_CLAUSE);
     node->data.catch_clause.param = param;
     node->data.catch_clause.body = body;
@@ -266,6 +312,17 @@ ASTNode *ast_make_string_literal(char *raw) {
     ASTNode *node = ast_alloc(AST_LITERAL);
     node->data.literal.literal_type = AST_LITERAL_STRING;
     node->data.literal.value.string = strip_quotes(raw);
+    return node;
+}
+
+ASTNode *ast_make_string_literal_raw(char *raw) {
+    ASTNode *node = ast_alloc(AST_LITERAL);
+    node->data.literal.literal_type = AST_LITERAL_STRING;
+    if (raw) {
+        node->data.literal.value.string = raw;
+    } else {
+        node->data.literal.value.string = (char *)calloc(1, sizeof(char));
+    }
     return node;
 }
 
@@ -428,7 +485,7 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             ast_traverse_list(node->data.block.body, visitor, userdata);
             break;
         case AST_VAR_DECL:
-            ast_traverse(node->data.var_decl.init, visitor, userdata);
+            ast_traverse(node->data.var_decl.binding, visitor, userdata);
             break;
         case AST_VAR_STMT:
             ast_traverse_list(node->data.var_stmt.decls, visitor, userdata);
@@ -540,7 +597,26 @@ void ast_traverse(ASTNode *node, ASTVisitFn visitor, void *userdata) {
             ast_traverse_list(node->data.switch_case.consequent, visitor, userdata);
             break;
         case AST_CATCH_CLAUSE:
+            ast_traverse(node->data.catch_clause.param, visitor, userdata);
             ast_traverse(node->data.catch_clause.body, visitor, userdata);
+            break;
+        case AST_BINDING_PATTERN:
+            ast_traverse(node->data.binding_pattern.target, visitor, userdata);
+            ast_traverse(node->data.binding_pattern.initializer, visitor, userdata);
+            break;
+        case AST_OBJECT_BINDING:
+            ast_traverse_list(node->data.object_binding.properties, visitor, userdata);
+            break;
+        case AST_ARRAY_BINDING:
+            ast_traverse_list(node->data.array_binding.elements, visitor, userdata);
+            break;
+        case AST_BINDING_PROPERTY:
+            ast_traverse(node->data.binding_property.value, visitor, userdata);
+            break;
+        case AST_REST_ELEMENT:
+            ast_traverse(node->data.rest_element.argument, visitor, userdata);
+            break;
+        case AST_ARRAY_HOLE:
             break;
         case AST_EMPTY_STMT:
         case AST_IDENTIFIER:
@@ -590,9 +666,8 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_VAR_DECL:
             print_indent(indent);
-            printf("VariableDeclaration name=%s\n",
-                   node->data.var_decl.name ? node->data.var_decl.name : "<anonymous>");
-            ast_print_internal(node->data.var_decl.init, indent + 2);
+            printf("VariableDeclaration\n");
+            ast_print_internal(node->data.var_decl.binding, indent + 2);
             break;
         case AST_VAR_STMT:
             print_indent(indent);
@@ -930,8 +1005,62 @@ static void ast_print_internal(const ASTNode *node, int indent) {
             break;
         case AST_CATCH_CLAUSE:
             print_indent(indent);
-            printf("CatchClause param=%s\n", node->data.catch_clause.param ? node->data.catch_clause.param : "<none>");
-            ast_print_internal(node->data.catch_clause.body, indent + 2);
+            printf("CatchClause\n");
+            if (node->data.catch_clause.param) {
+                print_indent(indent + 2);
+                printf("Param\n");
+                ast_print_internal(node->data.catch_clause.param, indent + 4);
+            }
+            print_indent(indent + 2);
+            printf("Body\n");
+            ast_print_internal(node->data.catch_clause.body, indent + 4);
+            break;
+        case AST_BINDING_PATTERN:
+            print_indent(indent);
+            printf("BindingPattern\n");
+            print_indent(indent + 2);
+            printf("Target\n");
+            ast_print_internal(node->data.binding_pattern.target, indent + 4);
+            if (node->data.binding_pattern.initializer) {
+                print_indent(indent + 2);
+                printf("Initializer\n");
+                ast_print_internal(node->data.binding_pattern.initializer, indent + 4);
+            }
+            break;
+        case AST_OBJECT_BINDING:
+            print_indent(indent);
+            printf("ObjectBindingPattern\n");
+            if (node->data.object_binding.properties) {
+                print_indent(indent + 2);
+                printf("Properties\n");
+                ast_print_list(node->data.object_binding.properties, indent + 4);
+            }
+            break;
+        case AST_ARRAY_BINDING:
+            print_indent(indent);
+            printf("ArrayBindingPattern\n");
+            if (node->data.array_binding.elements) {
+                print_indent(indent + 2);
+                printf("Elements\n");
+                ast_print_list(node->data.array_binding.elements, indent + 4);
+            }
+            break;
+        case AST_BINDING_PROPERTY:
+            print_indent(indent);
+            printf("BindingProperty key=%s%s%s\n",
+                   node->data.binding_property.key.name ? node->data.binding_property.key.name : "<unknown>",
+                   node->data.binding_property.key.is_identifier ? " (identifier)" : "",
+                   node->data.binding_property.is_shorthand ? " [shorthand]" : "");
+            ast_print_internal(node->data.binding_property.value, indent + 2);
+            break;
+        case AST_REST_ELEMENT:
+            print_indent(indent);
+            printf("RestElement\n");
+            ast_print_internal(node->data.rest_element.argument, indent + 2);
+            break;
+        case AST_ARRAY_HOLE:
+            print_indent(indent);
+            printf("ArrayHole\n");
             break;
     }
 }
@@ -952,8 +1081,7 @@ void ast_free(ASTNode *node) {
             ast_list_free(node->data.block.body);
             break;
         case AST_VAR_DECL:
-            free(node->data.var_decl.name);
-            ast_free(node->data.var_decl.init);
+            ast_free(node->data.var_decl.binding);
             break;
         case AST_VAR_STMT:
             ast_list_free(node->data.var_stmt.decls);
@@ -1086,8 +1214,27 @@ void ast_free(ASTNode *node) {
             ast_list_free(node->data.switch_case.consequent);
             break;
         case AST_CATCH_CLAUSE:
-            free(node->data.catch_clause.param);
+            ast_free(node->data.catch_clause.param);
             ast_free(node->data.catch_clause.body);
+            break;
+        case AST_BINDING_PATTERN:
+            ast_free(node->data.binding_pattern.target);
+            ast_free(node->data.binding_pattern.initializer);
+            break;
+        case AST_OBJECT_BINDING:
+            ast_list_free(node->data.object_binding.properties);
+            break;
+        case AST_ARRAY_BINDING:
+            ast_list_free(node->data.array_binding.elements);
+            break;
+        case AST_BINDING_PROPERTY:
+            free(node->data.binding_property.key.name);
+            ast_free(node->data.binding_property.value);
+            break;
+        case AST_REST_ELEMENT:
+            ast_free(node->data.rest_element.argument);
+            break;
+        case AST_ARRAY_HOLE:
             break;
     }
     free(node);
