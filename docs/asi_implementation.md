@@ -35,6 +35,7 @@ function foo() {
 console.log(1)` 被错误拆分。
 - `g_paren_depth` 与 `g_control_stack[]`：追踪括号深度以及控制语句的条件范围。
 - `g_pending`：保存“真实”下一个 token；在注入虚拟分号后，延迟返回原 token 以维持顺序。
+- `g_conditional_depth` / `g_last_token_conditional_colon`：跟踪 `?:` 条件表达式中尚未闭合的 `?` 与对应 `:`，若 `:` 之后立即遇到 `{`，会把该 `{` 标记为对象字面量而非语句块，防止 `cond ? expr : { ... }` 在 `}` 处误插分号。
 
 ## 处理流程
 
@@ -117,6 +118,10 @@ in b)`），后续若支持需补充测试。
 - 修复：把 `'?'` 与 `':'` 纳入 `suppress_newline_insertion()` 的白名单，允许多行三元表达式（以及换行后的标签、对象字面量属性值）继续解析而不触发 ASI。`should_insert_semicolon()` 仍会在真正的语句边界插入分号，因此对其他场景没有副作用。
 - `test/JavaScript_Datasets/3kbjs/1621567318.9746854` 是上一问题的压缩版本，内部箭头函数写成 `r.useCallback(e=>{s.current.add(e)},[])`——块体里缺少显式分号。真实 JS 会在闭合 `}` 处执行 ASI，但我们的适配层因为把 `=> {` 误判为对象字面量而拒绝插入分号，最终在 `}` 处报 `unexpected '}', expecting ';' or ','`。
 - 解决方案：在 `update_token_state()` 中把紧随 `ARROW` 的 `{` 视作块语句（而非对象），这样 `should_insert_semicolon()` 会像处理普通函数体一样在 `}` 之前补分号。
+- `test/1.js` 以及 `test/JavaScript_Datasets/3kbjs/1621567293.5537715` 还包含 `cond ? fn() : { ... }` 形式的三元表达式。`expr_no_obj` 曾禁止 `object_literal`，适配层又把 `:` 后的 `{` 当作语句块，于是在 `}` 前插入了 ASI，Bison 再看到真实的 `;` 时就报 `unexpected ';', expecting '}'`。
+- 解决方案：
+  1. 在 `_no_obj` 家族中允许直接还原 `object_literal`，不再要求写 `({ ... })`。
+  2. 适配层新增 `g_conditional_depth` 与 `g_last_token_conditional_colon`，只有在匹配到尚未闭合的 `?:` 分支时，才把随后的 `{` 标记为对象字面量，并在 `}` 前禁止 ASI。这样 `cond ? expr : { foo: 1 }` 与链式三元都能解析成功。
 
 ---
 

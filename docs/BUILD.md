@@ -7,6 +7,8 @@
 - `js_lexer.exe`：输出 Token 流的词法分析工具，便于定位词法规则问题。
 - `js_parser.exe`：完成语法分析并生成 AST，支持 `--dump-ast` 选项输出树形结构。
 
+> 提示：`src/` 下的 `lexer.re`/`parser.y`/`ast.*` 才是权威源文件，根目录的副本仅供编辑器提示使用。修改语法或词法后，务必执行 `./make parser`（或 `build.bat parser`）以重新生成 `build/generated/parser.{c,h}` 并保持镜像一致。
+
 ## 环境要求
 
 - GCC（MinGW64，脚本默认路径为 `D:\mingw64\bin\gcc.exe`）。
@@ -71,7 +73,7 @@ make help
 
 ```bash
 # 分析 JavaScript 文件
-.\js_lexer.exe tests\test_basic.js
+.\js_lexer.exe test\test_basic.js
 
 # 或使用任何 JS 文件
 .\js_lexer.exe your_script.js
@@ -80,7 +82,7 @@ make help
 **示例输出：**
 
 ```text
-=== Lexical Analysis of 'tests\test_basic.js' ===
+=== Lexical Analysis of 'test\test_basic.js' ===
 
 [  1] Line   2, Col   1: VAR             = 'var'
 [  2] Line   2, Col   5: IDENTIFIER      = 'x'
@@ -100,22 +102,22 @@ Total tokens: 106
 
 ```bash
 # 分析 JavaScript 文件
-.\js_parser.exe tests\test_basic.js
+.\js_parser.exe test\test_basic.js
 
 # 测试语法正确的文件
-.\js_parser.exe tests\test_simple.js
+.\js_parser.exe test\test_simple.js
 
 # 测试语法错误的文件
-.\js_parser.exe tests\test_error_object.js
+.\js_parser.exe test\test_error_object.js
 
 # 输出 AST 结构
-.\js_parser.exe --dump-ast tests\test_basic.js
+.\js_parser.exe --dump-ast test\test_basic.js
 ```
 
 **成功示例：**
 
 ```text
-Parsing successful! Input file: tests\test_basic.js
+Parsing successful! Input file: test\test_basic.js
 ```
 
 ### 自动分号插入（ASI）
@@ -136,9 +138,18 @@ Parsing successful! Input file: tests\test_basic.js
 运行 `build.bat test-parse` 或 `make test-parse` 可一次性验证基础语法与 ASI 相关用例。
 
 ```text
-Parsing failed. Input file: tests\test_error_object.js
+Parsing failed. Input file: test\test_error_object.js
 Syntax error: syntax error, unexpected STRING, expecting ':'
 ```
+
+## 回归套件与日志
+
+- **基础回归**：`./make test`（或 `.uild.bat test`）会串行运行 `test/` 根目录下的所有样例，等价于依次执行 `test_*` 与 `test_error_*`。
+- **ES6 分阶段**：`make test test/es6_stage1` ~ `stage5` 可验证解构、箭头函数、模板、类、`for-of`/生成器/spread 等增量能力。
+- **真实数据集**：`make test test/JavaScript_Datasets/goodjs`（预期成功）与 `.../badjs`（预期失败集合）覆盖压缩脚本；路径同样适用于 `.uild.bat test <path>`。
+- **错误日志**：每次测试前会清空 `build/parser_error_locations.log`，失败用例会以 `文件:行:列:错误` 形式追加。`build/test_failures.log` 保存完整 stdout/stderr，便于和 Node/V8 行为对照。
+
+> 如只想验证单个 repro，可将其放在 `tmp/` 后执行 `make test tmp/repro_cond_simple.js`；日志同样会落在 `build/parser_error_locations.log`。
 
 ## 已实现的功能
 
@@ -365,7 +376,7 @@ js_compiler_by_c/
 **A:** 在 `test/` 目录创建新的 `.js` 文件，然后运行：
 
 ```bash
-.\js_parser.exe tests\your_test.js
+.\js_parser.exe test\your_test.js
 ```
 
 ### Q: 为什么使用 re2c 而不是 Flex？
@@ -374,10 +385,7 @@ js_compiler_by_c/
 
 ### Q: 当前是否支持 ES6+ 语法？
 
-**A:** 不支持。当前仅支持 ES5 基本语法：
-
-- ❌ 不支持：箭头函数、类、async/await、模板字符串、解构等
-- ✅ 支持：var/let/const、函数、if-else、for 循环、对象/数组字面量
+**A:** 已支持 ES2015 ~ ES2017 的主流语法（类、模块、解构、模板字符串、箭头函数、`function*`/`yield*`、`for-of`、`async`/`await`、spread/rest 等）。ES2020+（可选链、空值合并、顶层 `await`、装饰器等）仍在规划中，详见 `docs/es6_limitations.md`。
 
 ## 参考资源
 

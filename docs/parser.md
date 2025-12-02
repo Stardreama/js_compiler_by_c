@@ -2,46 +2,43 @@
 
 本文件描述当前项目已实现的“语法检测”（基于 Bison）能力、覆盖范围、歧义消解策略、错误信息形式，以及在 Windows/MSYS2 下的构建与使用方法。
 
-> 目标定位：语法正确性校验（Syntax Check）。当前版本不生成 AST，不执行语义/风格检查（例如 `return + b` 在语法上合法，因此不会报错）。
+> 目标定位：脚本/模块语法正确性校验 + AST 产出。解析流程已经集成自动分号插入（ASI）与 AST 构造，仍聚焦语法层面——诸如 `return + b` 这类语法合法但可疑的写法不会在此阶段报错。
 
 ---
 
 ## 1. 覆盖范围（已实现）
 
-语句（Statements）：
+语句（Statements / Module Items）：
 
-- 空语句：`;`
-- 变量声明：`var | let | const` 单个声明，支持可选初始化（如 `let x = 1;`）
-- 表达式语句（Expression Statement）
-- 块语句（Block）：`{ ... }`
-- 条件语句：`if (...) stmt`、`if (...) stmt else stmt`
-- for（经典三段式）：`for (init; test; update) stmt`
-- 函数声明：`function foo(a, b) { ... }`
+- 空语句、块语句与表达式语句。
+- 变量声明：`var` / `let` / `const`，支持解构、默认值与 `...rest`。
+- 控制流：`if/else`、`switch`、`while`、`do-while`、`for`（三段式）、`for-in`、`for-of`、`with`、标签语句、`break/continue/return/throw`（含 label）。
+- 函数：`function` / `function*`、`async function`、`async function*`，支持默认参数/解构/`...rest`。
+- 异常：`try/catch/finally`（`catch` 绑定可解构）。
+- 类与模块：`class` 声明/表达式（实例/静态/访问器/生成器方法）、`import`/`export`/`export default`/`export *`。
+- 其他：`debugger`、`with`、`yield` 受限产生式、`await`。
 
 表达式（Expressions）：
 
-- 成员访问与函数调用：`obj.prop`、`fn(a, b)`
-- 一元运算：`+x`、`-x`、`!x`、`~x`
-- 乘法/加法：`* / %`、`+ -`
-- 关系/相等：`< > <= >=`、`== != === !==`
-- 逻辑：`&& ||`
-- 赋值（基础）：`lhs = expr`
-- 括号分组：`( expr )`
-- 字面量：`NUMBER`、`STRING`、`IDENTIFIER`
-- 数组字面量：`[a, b, c]`（支持尾随逗号）
-- 对象字面量：`{ key: value, ... }`（支持尾随逗号；键可为标识符或字符串）
+- 成员访问与调用链：`obj.prop`、`obj[expr]`、`new Foo().bar()[idx]`、模板调用。
+- 一元/二元/三元/复合赋值全套优先级，含 `in`/`instanceof`、位运算、`?:`、逗号表达式。
+- 特性扩展：箭头函数（含 `async`/解构/默认值）、模板字符串/Tagged Template、`function*`/`yield*`、`await`、spread/rest（数组/调用/对象属性）、解构赋值、`super`、`import()`、计算属性键、`new.target`。
+- 字面量：数字（含二/八/十六进制与 BigInt）、字符串、布尔/`null`、正则、数组、对象、模板、类表达式等。
 
-> 注：上述能力足以解析 `test/test_basic.js`，并能对常见语法错误（漏冒号/括号/逗号/分号等）给出明确报错。
+> 这些能力覆盖 `test/*.js`、`test/es6_stage{1..5}` 以及 `test/JavaScript_Datasets/goodjs` 中的大部分脚本。仍未实现的 ES2020+ 特性记录在 `docs/es6_limitations.md`。
 
 ---
 
 ## 2. 关键歧义与消解
 
-- 块 `{ ... }` vs 对象字面量 `{ ... }`：
-  - 在“表达式语句”的位置，禁止以 `{` 开头的表达式（引入 `expr_no_obj` 变体）。
-  - 因此：
-    - `if (cond) { ... }` 中的 `{` 一定被解析为块。
-    - 而赋值等表达式环境中仍允许对象字面量：`let x = { a: 1 }`。
+- **块与对象字面量**：所有会出现在语句起始位置的表达式都使用 `_no_obj` 变体；若确实需要对象字面量则写在括号内或依赖最新的 `object_literal` 直通（在 `?:` 分支/解构/赋值等环境中已开放）。
+- **`in` 与 `for-in/for-of`**：声明、赋值与部分表达式存在 `_no_in` 版本，用于区分 `for (var key = expr; ...)` 与 `for (var key in source)`。
+- **函数声明 vs 表达式**：适配层在语句起始位置把 `function` 提升为 `FUNCTION_DECL`，语法只允许它归约到 `func_decl`，避免 `function foo() {}` 在表达式语句中重复分支。
+- **箭头函数**：词法适配层在判定 `(` 后面紧跟 `)=>` 时注入 `ARROW_HEAD` 虚拟 token，语法依赖该 token 进入 `arrow_function`，避免与分组表达式冲突。
+- **`new` 与调用链**：`member_call_expr`/`left_hand_side_expr` 体系把 `new Foo().bar()[0]()` 等组合拆成多层，以防 GLR 在同一 `()` 上生成 `new` 参数与额外调用两个分支。
+- **模板/标签/ASI**：`parser_lex_adapter.c` 会在 `.`/` [``( `、`ARROW`、`? :`、`catch`、`function`、`await` 等上下文抑制换行分号插入，详见 `docs/asi_implementation.md`。
+
+> 2025-12：针对 `cond ? expr : { ... }` 的三元表达式，语法层已允许 `_no_obj` 直接接 `object_literal`，适配层也新增 `g_conditional_depth` 确保 `:` 后的 `{` 被视作对象字面量而非语句块，避免在 `}` 前误插分号。
 
 ---
 
@@ -76,7 +73,7 @@
 - for 头部缺分号：`for (var i = 0 i < 5; i++)` → 期待 `;`
 - 省略分号（当前未实现 ASI）：`var x = 10` → 报错
 
-> 提示：`return + b;` 在语法上合法（一元 `+`），不会报错；这类“可疑但合法”的情况属于语义/风格层面，后续可在 AST 基础上做静态分析再报告。
+> 提示：`return + b;` 在语法上合法（一元 `+`），不会报错；这类“可疑但合法”的情况属于语义/风格层面，后续可在 AST 基础上做静态分析再报告。批量测试时可结合 `build/parser_error_locations.log` 以及 `build/test_failures.log` 快速跳转到失败位置。
 
 ---
 
@@ -110,8 +107,10 @@ PowerShell（可选）：
 ```powershell
 cd d:\EduLibrary\OurEDA\js_compiler_by_c
 .\build.bat parser
-.\js_parser.exe .\tests\test_basic.js
+.\js_parser.exe .\test\test_basic.js
 ```
+
+> 更多回归：`make test test/es6_stage1` ~ `stage5` 分别验证解构/箭头/模板/类/for-of，`make test test/JavaScript_Datasets/goodjs`/`badjs` 可对真实压缩脚本回归；同样适用于 `.uild.bat test <path>`。
 
 ---
 
@@ -132,15 +131,15 @@ cd d:\EduLibrary\OurEDA\js_compiler_by_c
 
 ## 7. 当前限制与后续计划
 
-- 未实现 ASI（自动分号插入）：当前分号必须显式书写。
-- 未生成 AST：后续可在语义动作中构建节点，并提供打印/检查能力。
-- 覆盖子集：尚未包含 `?:` 条件表达式、完整赋值/位移/位运算优先级、更丰富语句（`while`/`do-while`/`switch` 等）、正则/模板字面量、类/模块、箭头函数、解构等。
-- 错误恢复：当前遇到错误直接终止；后续可加入同步/恢复与更精确的位置信息。
+- **语法覆盖**：尚未实现 ES2020+ 特性（可选链、空值合并、`?.[]`、`??=`, decorator、顶层 `await`、`import.meta` 等）；部分 Stage 提案（如记录/元组）也不在范围内。详见 `docs/es6_limitations.md`。
+- **语义/上下文检查**：解析器只关注语法，未对重复声明、严格模式限制、`super` 语义、`await` 使用位置等进行验证。
+- **错误恢复**：当前遇到语法错误立即终止，尚未实现同步/多错误上报；建议通过最小复现或 `build/parser_error_locations.log` 逐条修复。
+- **性能/内存**：针对数 MB 的压缩脚本会使用 GLR 分支，仍需在 `build/test_failures.log` 中确认是否存在异常的分支爆炸。
 
 路线建议：
 
-1. 工程实用性优先：先实现 AST 与 ASI（`return/break/continue/throw`、行终止、输入末尾等），并增加静态检查；
-2. 语法完备度优先：扩展表达式与语句集合，逐步覆盖更多 ES 语法特性。
+1. 基于 AST 执行静态检查（重复声明、受限关键字、严格模式等），并按需输出补充诊断。
+2. 补齐 ES2020+ 常见语法（可选链、nullish、顶层 `await`）与错误恢复逻辑，保持与 `goodjs` 数据集的兼容性。
 
 ---
 
