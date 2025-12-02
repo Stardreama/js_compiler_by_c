@@ -118,8 +118,6 @@ int main(int argc, char **argv) {
         }
         if (!has_valid_ext) {
             fprintf(stderr, "[WARN] %s - content parsed but file extension is not JS. Only .js/.mjs/.cjs are supported.\n", filename);
-            ast_free(root);
-            return 2;
         }
         printf("[PASS] %s - no syntax errors detected.\n", filename);
         ast_free(root);
