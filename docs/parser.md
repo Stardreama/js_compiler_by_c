@@ -222,3 +222,10 @@ cd d:\EduLibrary\OurEDA\js_compiler_by_c
 - 修复策略：沿 ECMAScript 规范新增 `member_call_expr` / `member_call_expr_no_arr`，把调用链（`()`、后续的 `()`/`[]`/`.`/模板字面量）独立出来。`left_hand_side_expr(_no_arr)` 现在会在 `new_expr` 之外，额外接受 `member_call_expr`，Bison 不再在相同 token 流上生成重复分支。
 - AST 行为保持不变：所有调用仍由 `ast_make_call` 构造，链式属性访问继续走 `ast_make_member`，只是调用阶段的语义动作移动到了新的产生式中。
 - 参考：`make test test/1.js`、`make test tmp/repro_new_chain.js`（本地最小复现）在修改后均无歧义日志，`build/parser_error_locations.log` 亦保持干净。
+
+## 18. `?:` 三元表达式后的对象字面量（2025-12-06）
+
+- `test/1.js` 与 `test/JavaScript_Datasets/3kbjs/1621567293.5537715` 都包含 `cond ? expr : { ... }`，词法适配层却在 `}` 之前插入了 ASI 分号，Bison 因此在看到真实的 `;` 时仍期待 `}`，报出 “unexpected ';', expecting '}'”。
+- 根因：`parser_lex_adapter` 在遇到 `:` 后默认将随后的 `{` 视作语句块，`should_insert_semicolon` 也把对应的 `}` 当作块终结，从而命中了 “`}` 前自动补分号” 的分支。换句话说，`?:` 的 `:` 与 `case/default`/label 的 `:` 混淆了。
+- 修复方式：适配层现在维护一个简易的 `?:` 深度计数器，并记忆“上一枚 `:` 是否匹配某个未闭合的 `?`”。只有在这种情况下才会把随后的 `{` 判定为对象字面量，从而在 `}` 前禁用 ASI。`src/parser.y` 里的 `_no_obj` 族也同步允许直接出现 `object_literal`，避免在嵌套场景下退化到必须写 `({ ... })` 的 workaround。
+- 验证：`tmp/repro_cond_simple.js`、`test/1.js` 与上述 dataset 文件均已通过，`build/test_failures.log` 不再出现 `unexpected ';', expecting '}'` 的错误记录。

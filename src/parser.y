@@ -896,9 +896,9 @@ assignment_expr_no_pattern_no_in
 
 conditional_expr
     : logical_or_expr
-            { $$ = $1; }
+        { $$ = $1; }
     | logical_or_expr '?' assignment_expr ':' assignment_expr
-            { $$ = ast_make_conditional($1, $3, $5); }
+        { $$ = ast_make_conditional($1, $3, $5); }
     ;
 
 conditional_expr_no_in
@@ -1741,6 +1741,8 @@ primary_no_obj
       { $$ = $1; }
   | array_literal
       { $$ = $1; }
+  | object_literal
+      { $$ = $1; }
   ;
 
 primary_no_obj_no_arr
@@ -1770,6 +1772,8 @@ primary_no_obj_no_arr
       { $$ = $1; }
   | function_expr
         { $$ = $1; }
+    | object_literal
+            { $$ = $1; }
   ;
 
 expr_no_in_no_obj

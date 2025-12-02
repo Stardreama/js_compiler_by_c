@@ -42,6 +42,8 @@ typedef enum {
 static BraceKind g_brace_stack[CONTROL_STACK_MAX];
 static int g_brace_top = 0;
 static bool g_pending_function_body = false;
+static int g_conditional_depth = 0;
+static bool g_last_token_conditional_colon = false;
 
 static bool is_control_keyword(int token) {
     return token == IF || token == FOR || token == WHILE || token == WITH || token == SWITCH || token == CATCH;
@@ -78,6 +80,7 @@ static void update_token_state(int token) {
     g_last_token_closed_control = false;
     g_last_token_closed_function = false;
     g_last_token_closed_paren = false;
+    bool current_token_is_conditional_colon = false;
 
     if (token == '(') {
         // 先增加深度，确保栈中记录的是“括号内”的层级
@@ -109,6 +112,13 @@ static void update_token_state(int token) {
             g_paren_depth--;
             g_last_token_closed_paren = true;
         }
+    } else if (token == '?') {
+        g_conditional_depth++;
+    } else if (token == ':') {
+        if (g_conditional_depth > 0) {
+            g_conditional_depth--;
+            current_token_is_conditional_colon = true;
+        }
     } else if (token == '{') {
         bool is_block = true;
         if (g_last_token > 0) {
@@ -135,7 +145,9 @@ static void update_token_state(int token) {
                     is_block = true;
                     break;
                 case ':':
-                    if (g_brace_top > 0 && g_brace_stack[g_brace_top - 1] == BRACE_OBJECT) {
+                    if (g_last_token_conditional_colon) {
+                        is_block = false;
+                    } else if (g_brace_top > 0 && g_brace_stack[g_brace_top - 1] == BRACE_OBJECT) {
                         is_block = false;
                     } else {
                         is_block = true;
@@ -165,6 +177,7 @@ static void update_token_state(int token) {
 
     g_prev_token = g_last_token;
     g_last_token = token;
+    g_last_token_conditional_colon = current_token_is_conditional_colon;
 }
 
 static bool is_restricted_token(int token) {
