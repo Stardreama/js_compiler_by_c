@@ -319,7 +319,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %type <str> for_of_keyword from_keyword as_keyword
 
 
-%type <list> stmt_list module_item_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list var_decl_list_no_in binding_property_list binding_property_sequence binding_element_list assignment_property_list assignment_property_sequence assignment_element_list class_body class_element_list class_element_list_opt import_clause named_imports import_specifier_list export_clause export_specifier_list
+%type <list> stmt_list module_item_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list var_decl_list_no_in binding_property_list binding_property_sequence binding_element_list binding_elision binding_elision_opt assignment_property_list assignment_property_sequence assignment_element_list class_body class_element_list class_element_list_opt import_clause named_imports import_specifier_list export_clause export_specifier_list
 %type <template_parts> template_part_list
 %type <boolean> generator_marker_opt async_modifier_opt
 
@@ -1578,6 +1578,8 @@ relational_expr_no_obj
       { $$ = ast_make_binary(">=", $1, $3); }
   | relational_expr_no_obj INSTANCEOF shift_expr_no_obj
       { $$ = ast_make_binary("instanceof", $1, $3); }
+  | relational_expr_no_obj IN shift_expr_no_obj
+      { $$ = ast_make_binary("in", $1, $3); }
   ;
 
 shift_expr_no_obj
@@ -2093,21 +2095,35 @@ binding_rest_property
   ;
 
 array_binding
-  : '[' ']'
-      { $$ = ast_make_array_binding(NULL); }
-  | '[' binding_element_list opt_trailing_comma ']'
+  : '[' binding_elision_opt ']'
       { $$ = ast_make_array_binding($2); }
-  | '[' binding_element_list ',' binding_rest_element opt_trailing_comma ']'
-      { $$ = ast_make_array_binding(ast_list_append($2, $4)); }
-  | '[' binding_rest_element opt_trailing_comma ']'
-      { ASTList *list = NULL; list = ast_list_append(list, $2); $$ = ast_make_array_binding(list); }
+  | '[' binding_elision_opt binding_element_list opt_trailing_comma ']'
+      { ASTList *list = ast_list_concat($2, $3); $$ = ast_make_array_binding(list); }
+  | '[' binding_elision_opt binding_element_list ',' binding_elision_opt binding_rest_element opt_trailing_comma ']'
+      { ASTList *list = ast_list_concat($2, $3); list = ast_list_concat(list, $5); $$ = ast_make_array_binding(ast_list_append(list, $6)); }
+  | '[' binding_elision_opt binding_rest_element opt_trailing_comma ']'
+      { ASTList *list = ast_list_concat($2, ast_list_append(NULL, $3)); $$ = ast_make_array_binding(list); }
   ;
 
 binding_element_list
   : binding_element
       { $$ = ast_list_append(NULL, $1); }
-  | binding_element_list ',' binding_element
-      { $$ = ast_list_append($1, $3); }
+  | binding_element_list ',' binding_elision_opt binding_element
+      { ASTList *list = ast_list_concat($1, $3); $$ = ast_list_append(list, $4); }
+  ;
+
+binding_elision_opt
+  : /* empty */
+      { $$ = NULL; }
+  | binding_elision
+      { $$ = $1; }
+  ;
+
+binding_elision
+  : ','
+      { $$ = ast_list_append(NULL, ast_make_array_hole()); }
+  | ',' binding_elision
+      { ASTList *list = ast_list_append(NULL, ast_make_array_hole()); $$ = ast_list_concat(list, $2); }
   ;
 
 binding_rest_element
@@ -2165,21 +2181,21 @@ assignment_rest_element
   ;
 
 array_assignment_pattern
-  : '[' ']'
-      { $$ = ast_make_array_binding(NULL); }
-  | '[' assignment_element_list opt_trailing_comma ']'
+  : '[' binding_elision_opt ']'
       { $$ = ast_make_array_binding($2); }
-  | '[' assignment_element_list ',' assignment_rest_element opt_trailing_comma ']'
-      { $$ = ast_make_array_binding(ast_list_append($2, $4)); }
-  | '[' assignment_rest_element opt_trailing_comma ']'
-      { ASTList *list = NULL; list = ast_list_append(list, $2); $$ = ast_make_array_binding(list); }
+  | '[' binding_elision_opt assignment_element_list opt_trailing_comma ']'
+      { ASTList *list = ast_list_concat($2, $3); $$ = ast_make_array_binding(list); }
+  | '[' binding_elision_opt assignment_element_list ',' binding_elision_opt assignment_rest_element opt_trailing_comma ']'
+      { ASTList *list = ast_list_concat($2, $3); list = ast_list_concat(list, $5); $$ = ast_make_array_binding(ast_list_append(list, $6)); }
+  | '[' binding_elision_opt assignment_rest_element opt_trailing_comma ']'
+      { ASTList *list = ast_list_concat($2, ast_list_append(NULL, $3)); $$ = ast_make_array_binding(list); }
   ;
 
 assignment_element_list
   : assignment_element
       { $$ = ast_list_append(NULL, $1); }
-  | assignment_element_list ',' assignment_element
-      { $$ = ast_list_append($1, $3); }
+  | assignment_element_list ',' binding_elision_opt assignment_element
+      { ASTList *list = ast_list_concat($1, $3); $$ = ast_list_append(list, $4); }
   ;
 
 assignment_element

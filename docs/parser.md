@@ -209,3 +209,9 @@ cd d:\EduLibrary\OurEDA\js_compiler_by_c
 - **AST**：加入 `AST_FOR_OF_STMT`、`AST_YIELD_EXPR`、`AST_SPREAD_ELEMENT` 节点，`function_decl`/`function_expr` 的 `is_generator` 标记会在 `function*` 或 `*method()` 时被置位；`ast_traverse`、`ast_print`、`ast_free` 均已更新。
 - **测试套件**：`test/es6_stage5/for_of.js`、`generators.js`、`spread_rest.js`、`for_of_bindings.js`、`generator_methods.js`、`spread_calls.js` 以及负例 `test_error_yield_newline.js`、`test_error_for_of_initializer.js` 覆盖 for-of 绑定模式、`yield*`/`finally`、类与对象生成器方法、调用/箭头中的 spread 组合与对应错误分支。执行 `make test ./test/es6_stage5` 可验证该阶段能力。
 - **当前限制**：尚未实现对象字面量 spread（`{ ...obj }`）、`for-await-of`、`async function*`、`yield` 在严格模式下的语义校验等高级特性；仍主要关注语法层面的可解析性。
+
+## 16. 表达式语句中的 `in` 运算符（2025-12-05）
+
+- `test/1.js` 与 `test/JavaScript_Datasets/3kbjs/21231667792110.278031` 使用了 `try { "localStorage" in window && ...; }` 这样的表达式语句，解析时却在 `in` 处报 `unexpected IN, expecting ';' or ','`。
+- 根因：表达式语句强制使用 `expr_no_obj` 以区分 `{}` 块与对象字面量，但我们忘记在 `relational_expr_no_obj` 中加入 `in` 分支（只有 `<`、`>`、`<=`、`>=`、`instanceof`）。因此一旦语句以字面量/标识符开头并出现 `in`，解析器会误认为仍在变量声明上下文。
+- 修复：为 `relational_expr_no_obj` 增加 `| relational_expr_no_obj IN shift_expr_no_obj`，并保持 `*_no_in` 族不允许 `in`，以免影响 `for (var x = expr; ...)` 和 `for-in` 之间的判定。现在表达式语句可以直接写 `"foo" in obj`, `key in dict && ...`，无需额外括号。

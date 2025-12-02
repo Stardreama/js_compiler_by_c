@@ -110,6 +110,14 @@ in b)`），后续若支持需补充测试。
 - 该缺陷也可以通过最小 repro `function outer(){function o(e){return n.call(this,e)||this}t.Team=1;}` 复现。
 - 修复：在 `parser_lex_adapter.c` 的 `can_end_statement()` 中补充 `THIS` / `SUPER`，让 `return ... || this`、`return super.foo` 等语句在缺少显式分号时依旧满足 ASI 条件，从而与真实 JS 引擎保持一致。
 
+## 2025-12-05 修复记录
+
+- `test/1.js`（同 `test/JavaScript_Datasets/1kbjs/20170223_bf0d33845db834a400d0e4b9e56ee02a`）在对象字面量属性中包含多行三元表达式：`referrer: "undefined" != typeof document ? document.referrer : null`。属性值每个分支都独占一行，我们在 `document` 与 `?` 之间的换行处错误地插入了分号，Bison 因此报 `unexpected ';', expecting '}'`。
+- 根因：`suppress_newline_insertion()` 只识别 `(`、`[`、`)`、`.`、`ARROW`。换言之，若一个可结束表达式后换行接上 `?`/`:`，即便它们只是多行三元表达式，也会被 ASI 误判成独立语句。
+- 修复：把 `'?'` 与 `':'` 纳入 `suppress_newline_insertion()` 的白名单，允许多行三元表达式（以及换行后的标签、对象字面量属性值）继续解析而不触发 ASI。`should_insert_semicolon()` 仍会在真正的语句边界插入分号，因此对其他场景没有副作用。
+- `test/JavaScript_Datasets/3kbjs/1621567318.9746854` 是上一问题的压缩版本，内部箭头函数写成 `r.useCallback(e=>{s.current.add(e)},[])`——块体里缺少显式分号。真实 JS 会在闭合 `}` 处执行 ASI，但我们的适配层因为把 `=> {` 误判为对象字面量而拒绝插入分号，最终在 `}` 处报 `unexpected '}', expecting ';' or ','`。
+- 解决方案：在 `update_token_state()` 中把紧随 `ARROW` 的 `{` 视作块语句（而非对象），这样 `should_insert_semicolon()` 会像处理普通函数体一样在 `}` 之前补分号。
+
 ---
 
-**最后更新**：2025-12-03
+**最后更新**：2025-12-05

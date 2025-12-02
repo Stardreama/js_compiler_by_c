@@ -1,123 +1,153 @@
-define(
-  "api_v2/datetime",
-  ["require", "exports", "tslib", "modules/clean/datetime/datetime"],
-  function (e, t, i, r) {
-    "use strict";
-    Object.defineProperty(t, "__esModule", { value: !0 }),
-      (t.formatTimestamp = void 0),
-      (r = i.__importStar(r)),
-      (t.formatTimestamp = function (e) {
-        return r.format_date_utc(e, "yyyy-MM-ddTHH:mm:ssZ");
-      });
+!(function (o) {
+  var r = {};
+  function n(t) {
+    if (r[t]) return r[t].exports;
+    var e = (r[t] = { i: t, l: !1, exports: {} });
+    return o[t].call(e.exports, e, e.exports, n), (e.l = !0), e.exports;
   }
-),
-  define(
-    "api_v2/default_team_client",
-    [
-      "require",
-      "exports",
-      "tslib",
-      "api_v2/types",
-      "api_v2/client_base",
-      "modules/clean/viewer",
-    ],
-    function (e, t, i, r, a, s) {
-      "use strict";
-      Object.defineProperty(t, "__esModule", { value: !0 }),
-        (t.DefaultTeamApiV2Client = void 0);
-      var n,
-        a =
-          ((n = a.ApiV2ClientBase),
-          i.__extends(o, n),
-          (o.prototype._headers = function (e) {
-            var t;
-            return i.__assign(
-              (((t = {})[r.ApiV2HeaderNames.DropboxUid] = String(
-                this.userProperties.id
-              )),
-              (t[r.ApiV2HeaderNames.DropboxTeamId] = String(
-                s.Viewer.get_viewer().team_id
-              )),
-              (t[r.ApiV2HeaderNames.DropboxTeamAuthorization] = JSON.stringify({
-                auth_role: String(s.Viewer.get_viewer().auth_role),
-                auth_action_type: String(
-                  s.Viewer.get_viewer().auth_action_type
-                ),
-              })),
-              t),
-              e.headers
-            );
-          }),
-          o);
-      function o(e, t) {
-        t = n.call(this, t) || this;
-        return (t.userProperties = e), t;
-      }
-      t.DefaultTeamApiV2Client = a;
-    }
-  ),
-  define(
-    "api_v2/default_user_client",
-    ["require", "exports", "tslib", "api_v2/types", "api_v2/client_base"],
-    function (e, t, i, r, a) {
-      "use strict";
-      Object.defineProperty(t, "__esModule", { value: !0 }),
-        (t.DefaultUserApiV2Client = void 0);
-      var s,
-        a =
-          ((s = a.ApiV2ClientBase),
-          i.__extends(n, s),
-          (n.prototype._headers = function (e) {
-            var t;
-            return i.__assign(
-              (((t = {})[r.ApiV2HeaderNames.DropboxUid] = String(
-                this.userProperties.id
-              )),
-              (t[r.ApiV2HeaderNames.DropboxPathRoot] = String(
-                this.userProperties.root_ns_id
-              )),
-              t),
-              e.headers
-            );
-          }),
-          n);
-      function n(e, t) {
-        t = s.call(this, t) || this;
-        return (t.userProperties = e), t;
-      }
-      t.DefaultUserApiV2Client = a;
-    }
-  ),
-  define(
-    "api_v2/team_client",
-    [
-      "require",
-      "exports",
-      "tslib",
-      "api_v2/types",
-      "api_v2/client_base",
-      "modules/clean/viewer",
-    ],
-    function (e, t, r, a, i, s) {
-      "use strict";
-      Object.defineProperty(t, "__esModule", { value: !0 }),
-        (t.TeamApiV2Client = void 0);
-      var n,
-        i =
-          ((n = i.ApiV2ClientBase),
-          r.__extends(o, n),
-          (o.prototype._headers = function (e) {
-            var t,
-              i = s.Viewer.get_viewer().get_user_by_id(e.subjectUserId);
-            return r.__assign(
-              (((t = {})[a.ApiV2HeaderNames.DropboxUid] = String(i.id)), t),
-              e.headers
-            );
-          }),
-          o);
-      function o(e) {
-        return n.call(this, e) || this;
-      }
-      t.TeamApiV2Client = i;
-    }
-  );
+  (n.m = o),
+    (n.c = r),
+    (n.d = function (t, e, o) {
+      n.o(t, e) || Object.defineProperty(t, e, { enumerable: !0, get: o });
+    }),
+    (n.r = function (t) {
+      "undefined" != typeof Symbol &&
+        Symbol.toStringTag &&
+        Object.defineProperty(t, Symbol.toStringTag, { value: "Module" }),
+        Object.defineProperty(t, "__esModule", { value: !0 });
+    }),
+    (n.t = function (e, t) {
+      if ((1 & t && (e = n(e)), 8 & t)) return e;
+      if (4 & t && "object" == typeof e && e && e.__esModule) return e;
+      var o = Object.create(null);
+      if (
+        (n.r(o),
+        Object.defineProperty(o, "default", { enumerable: !0, value: e }),
+        2 & t && "string" != typeof e)
+      )
+        for (var r in e)
+          n.d(
+            o,
+            r,
+            function (t) {
+              return e[t];
+            }.bind(null, r)
+          );
+      return o;
+    }),
+    (n.n = function (t) {
+      var e =
+        t && t.__esModule
+          ? function () {
+              return t.default;
+            }
+          : function () {
+              return t;
+            };
+      return n.d(e, "a", e), e;
+    }),
+    (n.o = function (t, e) {
+      return Object.prototype.hasOwnProperty.call(t, e);
+    }),
+    (n.p = "/static/1.55.5/"),
+    n((n.s = 498));
+})({
+  498: function (t, e, o) {
+    t.exports = o(499);
+  },
+  499: function (t, e, o) {
+    "use strict";
+    Object.defineProperty(e, "__esModule", { value: !0 });
+    var o = o(86);
+    location.search && location.search.match(/command=notificationStatus/)
+      ? (function () {
+          var e = "unsupported";
+          if ("localStorage" in window)
+            try {
+              (e = "none"),
+                window.localStorage.getItem(
+                  "mol-fe-browser-notifications-last-prompt-epoch"
+                ) && (e = "prompted"),
+                window.localStorage.getItem(
+                  "MOL-FE-WEB-PUSH_SUBSCRIPTION_STATUS"
+                ) && (e = "subscribed");
+            } catch (t) {
+              e = "error";
+            }
+          window.parent.postMessage(
+            { data: { status: e }, scope: "newzit-notification-status" },
+            "*"
+          );
+        })()
+      : ((o = o.setABToStorage()),
+        window.parent.postMessage(
+          { data: { abNumber: o }, scope: "mol-fe-xpmodule-news-search-ab" },
+          "*"
+        ));
+  },
+  68: function (t, e, o) {
+    "use strict";
+    var r;
+    Object.defineProperty(e, "__esModule", { value: !0 }),
+      (e.GEO_COUNTRIES = ["gb", "us"]),
+      (e.TOP_STORIES_CATEGORIES = [
+        "entertainment",
+        "news",
+        "sport",
+        "newYork",
+      ]),
+      (e.getCategoryKeyByTabAndGeo = function (t, e) {
+        return "" + t + e.toUpperCase();
+      }),
+      (e.setApiHost = function (t) {
+        r = t;
+      }),
+      (e.getApiHost = function () {
+        return r;
+      }),
+      (e.apiPath = function (t) {
+        return "" + r + t;
+      });
+  },
+  86: function (t, o, e) {
+    "use strict";
+    Object.defineProperty(o, "__esModule", { value: !0 });
+    var r = e(68);
+    (o.setToStorage = function (t, e) {
+      try {
+        "localStorage" in window &&
+          window.localStorage.setItem("newzit-" + t, JSON.stringify(e));
+      } catch (t) {}
+    }),
+      (o.getFromStorage = function (t) {
+        try {
+          if ("localStorage" in window) {
+            var e = window.localStorage.getItem("newzit-" + t);
+            return e ? JSON.parse(e) : null;
+          }
+        } catch (t) {}
+        return null;
+      }),
+      (o.hasVisitedBefore = function () {
+        try {
+          if ("localStorage" in window && window.localStorage.getItem("rta2"))
+            return !0;
+        } catch (t) {}
+        return Boolean(o.getFromStorage("has-visited-before"));
+      }),
+      (o.CATEGORY_STORAGE_KEY = "category"),
+      (o.getCategoryFromStorage = function () {
+        var t = o.getFromStorage(o.CATEGORY_STORAGE_KEY);
+        return r.TOP_STORIES_CATEGORIES.includes(t) ? t : null;
+      }),
+      (o.setABToStorage = function (t) {
+        try {
+          var e =
+            t || o.getFromStorage("nabt") || Math.floor(60 * Math.random());
+          return o.setToStorage("nabt", String(e)), String(e);
+        } catch (t) {
+          return null;
+        }
+      });
+  },
+});

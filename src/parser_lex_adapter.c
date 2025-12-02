@@ -131,6 +131,7 @@ static void update_token_state(int token) {
                 case ';':
                 case '{':
                 case '}':
+                case ARROW:
                     is_block = true;
                     break;
                 case ':':
@@ -220,7 +221,18 @@ static bool suppress_newline_insertion(int token, bool paren_is_function_literal
     if (token == '(') {
         return !paren_is_function_literal;
     }
-    return token == '[' || token == ')' || token == '.' || token == ARROW;
+
+    switch (token) {
+        case '[':
+        case ')':
+        case '.':
+        case '?':
+        case ':':
+        case ARROW:
+            return true;
+        default:
+            return false;
+    }
 }
 
 static bool in_statement_context(void) {
