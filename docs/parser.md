@@ -215,3 +215,10 @@ cd d:\EduLibrary\OurEDA\js_compiler_by_c
 - `test/1.js` 与 `test/JavaScript_Datasets/3kbjs/21231667792110.278031` 使用了 `try { "localStorage" in window && ...; }` 这样的表达式语句，解析时却在 `in` 处报 `unexpected IN, expecting ';' or ','`。
 - 根因：表达式语句强制使用 `expr_no_obj` 以区分 `{}` 块与对象字面量，但我们忘记在 `relational_expr_no_obj` 中加入 `in` 分支（只有 `<`、`>`、`<=`、`>=`、`instanceof`）。因此一旦语句以字面量/标识符开头并出现 `in`，解析器会误认为仍在变量声明上下文。
 - 修复：为 `relational_expr_no_obj` 增加 `| relational_expr_no_obj IN shift_expr_no_obj`，并保持 `*_no_in` 族不允许 `in`，以免影响 `for (var x = expr; ...)` 和 `for-in` 之间的判定。现在表达式语句可以直接写 `"foo" in obj`, `key in dict && ...`，无需额外括号。
+
+## 17. `new`+调用链二义性再清理（2025-12-06）
+
+- 回归 `test/1.js` 时，`new Foo(bar).baz()` 仍触发 GLR “syntax is ambiguous”，根因在于 `member_expr` 同时负责属性访问与函数调用，而 `left_hand_side_expr` 只有 `new_expr` 可选，导致 Bison 在 `()` 处既尝试把它当作 `new` 的参数，又尝试把它视为额外的调用。
+- 修复策略：沿 ECMAScript 规范新增 `member_call_expr` / `member_call_expr_no_arr`，把调用链（`()`、后续的 `()`/`[]`/`.`/模板字面量）独立出来。`left_hand_side_expr(_no_arr)` 现在会在 `new_expr` 之外，额外接受 `member_call_expr`，Bison 不再在相同 token 流上生成重复分支。
+- AST 行为保持不变：所有调用仍由 `ast_make_call` 构造，链式属性访问继续走 `ast_make_member`，只是调用阶段的语义动作移动到了新的产生式中。
+- 参考：`make test test/1.js`、`make test tmp/repro_new_chain.js`（本地最小复现）在修改后均无歧义日志，`build/parser_error_locations.log` 亦保持干净。
