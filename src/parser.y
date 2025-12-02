@@ -16,7 +16,7 @@ int yylex(void);
 void yyerror(const char *s);
 
 #ifndef YYMAXDEPTH
-#define YYMAXDEPTH 200000
+#define YYMAXDEPTH 2000000
 #endif
 
 static ASTNode *g_parser_ast_root = NULL;

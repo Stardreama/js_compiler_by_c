@@ -104,6 +104,12 @@ in b)`），后续若支持需补充测试。
 - `test/JavaScript_Datasets/1kbjs/960b1ba66cd62048f5a7553ad1b1260a` 以及 `tmp/repro_new_iife.js` 复现了 `new Foo()` 后换行紧跟 `(function(){ ... }())` 的模式。适配层把所有前瞻到 `(` 的换行都判定为“安全”，从而抑制了 ASI，Bison 继续把 `(` 视作调用结果，最终报 `syntax is ambiguous`。
 - 解决方案：在 `should_insert_semicolon()` 调用链中使用 `paren_starts_function_literal()` 判断该 `(` 是否引入 IIFE。若是 `(function ...` 开头，则既允许 ASI 插入分号，也阻止 `suppress_newline_insertion()` 抑制该换行，从而把 `new` 表达式正确结束成独立语句。
 
+## 2025-12-02 修复记录
+
+- `test/JavaScript_Datasets/3kbjs/11071667787002.163551`（与 `test/1.js` 语义相同但移除了显式分号）在 `function o(e){ return n.call(this,e) || this }` 处触发 `unexpected '}', expecting ';'`。原因是 ASI 的 `can_end_statement()` 把 `this`/`super` 视作“不可结束语句”的 token，导致在 `}` 前拒绝插入分号。
+- 该缺陷也可以通过最小 repro `function outer(){function o(e){return n.call(this,e)||this}t.Team=1;}` 复现。
+- 修复：在 `parser_lex_adapter.c` 的 `can_end_statement()` 中补充 `THIS` / `SUPER`，让 `return ... || this`、`return super.foo` 等语句在缺少显式分号时依旧满足 ASI 条件，从而与真实 JS 引擎保持一致。
+
 ---
 
 **最后更新**：2025-12-03

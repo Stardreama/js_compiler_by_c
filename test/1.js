@@ -1,64 +1,123 @@
-var SlideNumberController = Class.create({
-  initialize: function (a, b) {
-    this.domNode = a;
-    this.width = 120;
-    this.height = 110;
-    this.slideNumberLabel = document.createElement("div");
-    this.slideNumberLabel.setAttribute("class", "slideNumberLabel");
-    if (b) {
-      this.slideNumberLabel.innerHTML = b;
-    } else {
-      this.slideNumberLabel.innerHTML = "Press Return to go to slide:";
+define(
+  "api_v2/datetime",
+  ["require", "exports", "tslib", "modules/clean/datetime/datetime"],
+  function (e, t, i, r) {
+    "use strict";
+    Object.defineProperty(t, "__esModule", { value: !0 }),
+      (t.formatTimestamp = void 0),
+      (r = i.__importStar(r)),
+      (t.formatTimestamp = function (e) {
+        return r.format_date_utc(e, "yyyy-MM-ddTHH:mm:ssZ");
+      });
+  }
+),
+  define(
+    "api_v2/default_team_client",
+    [
+      "require",
+      "exports",
+      "tslib",
+      "api_v2/types",
+      "api_v2/client_base",
+      "modules/clean/viewer",
+    ],
+    function (e, t, i, r, a, s) {
+      "use strict";
+      Object.defineProperty(t, "__esModule", { value: !0 }),
+        (t.DefaultTeamApiV2Client = void 0);
+      var n,
+        a =
+          ((n = a.ApiV2ClientBase),
+          i.__extends(o, n),
+          (o.prototype._headers = function (e) {
+            var t;
+            return i.__assign(
+              (((t = {})[r.ApiV2HeaderNames.DropboxUid] = String(
+                this.userProperties.id
+              )),
+              (t[r.ApiV2HeaderNames.DropboxTeamId] = String(
+                s.Viewer.get_viewer().team_id
+              )),
+              (t[r.ApiV2HeaderNames.DropboxTeamAuthorization] = JSON.stringify({
+                auth_role: String(s.Viewer.get_viewer().auth_role),
+                auth_action_type: String(
+                  s.Viewer.get_viewer().auth_action_type
+                ),
+              })),
+              t),
+              e.headers
+            );
+          }),
+          o);
+      function o(e, t) {
+        t = n.call(this, t) || this;
+        return (t.userProperties = e), t;
+      }
+      t.DefaultTeamApiV2Client = a;
     }
-    this.slideNumberDigit = document.createElement("div");
-    this.slideNumberDigit.setAttribute("class", "slideNumberDigit");
-    this.domNode.appendChild(this.slideNumberLabel);
-    this.domNode.appendChild(this.slideNumberDigit);
-    this.isShowing = false;
-  },
-  setPosition: function (b, a) {
-    this.domNode.style.left = b + "px";
-    this.domNode.style.top = a + "px";
-  },
-  setSlideNumber: function (a) {
-    this.slideNumberDigit.innerHTML = a;
-  },
-  show: function () {
-    this.isShowing = true;
-    this.domNode.style.display = "block";
-    this.domNode.style.opacity = 1;
-  },
-  hide: function () {
-    this.isShowing = false;
-    this.domNode.style.display = "none";
-    this.domNode.style.opacity = 0;
-  },
-});
-var SlideNumberDisplay = Class.create({
-  initialize: function (a) {
-    this.domNode = a;
-    this.width = 100;
-    this.height = 100;
-    this.slideNumberDigit = document.createElement("div");
-    this.slideNumberDigit.setAttribute("class", "slideNumberDisplayDigit");
-    this.domNode.appendChild(this.slideNumberDigit);
-    this.isShowing = false;
-  },
-  setPosition: function (b, a) {
-    this.domNode.style.left = b + "px";
-    this.domNode.style.top = a + "px";
-  },
-  setSlideNumber: function (a) {
-    this.slideNumberDigit.innerHTML = a;
-  },
-  show: function (a) {
-    this.isShowing = true;
-    this.domNode.style.display = "block";
-    this.domNode.style.opacity = 1;
-  },
-  hide: function () {
-    this.isShowing = false;
-    this.domNode.style.display = "none";
-    this.domNode.style.opacity = 0;
-  },
-});
+  ),
+  define(
+    "api_v2/default_user_client",
+    ["require", "exports", "tslib", "api_v2/types", "api_v2/client_base"],
+    function (e, t, i, r, a) {
+      "use strict";
+      Object.defineProperty(t, "__esModule", { value: !0 }),
+        (t.DefaultUserApiV2Client = void 0);
+      var s,
+        a =
+          ((s = a.ApiV2ClientBase),
+          i.__extends(n, s),
+          (n.prototype._headers = function (e) {
+            var t;
+            return i.__assign(
+              (((t = {})[r.ApiV2HeaderNames.DropboxUid] = String(
+                this.userProperties.id
+              )),
+              (t[r.ApiV2HeaderNames.DropboxPathRoot] = String(
+                this.userProperties.root_ns_id
+              )),
+              t),
+              e.headers
+            );
+          }),
+          n);
+      function n(e, t) {
+        t = s.call(this, t) || this;
+        return (t.userProperties = e), t;
+      }
+      t.DefaultUserApiV2Client = a;
+    }
+  ),
+  define(
+    "api_v2/team_client",
+    [
+      "require",
+      "exports",
+      "tslib",
+      "api_v2/types",
+      "api_v2/client_base",
+      "modules/clean/viewer",
+    ],
+    function (e, t, r, a, i, s) {
+      "use strict";
+      Object.defineProperty(t, "__esModule", { value: !0 }),
+        (t.TeamApiV2Client = void 0);
+      var n,
+        i =
+          ((n = i.ApiV2ClientBase),
+          r.__extends(o, n),
+          (o.prototype._headers = function (e) {
+            var t,
+              i = s.Viewer.get_viewer().get_user_by_id(e.subjectUserId);
+            return r.__assign(
+              (((t = {})[a.ApiV2HeaderNames.DropboxUid] = String(i.id)), t),
+              e.headers
+            );
+          }),
+          o);
+      function o(e) {
+        return n.call(this, e) || this;
+      }
+      t.TeamApiV2Client = i;
+    }
+  );

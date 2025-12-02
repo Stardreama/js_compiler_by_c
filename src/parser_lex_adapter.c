@@ -198,6 +198,8 @@ static bool can_end_statement(int token) {
         case FALSE:
         case NULL_T:
         case UNDEFINED:
+        case THIS:
+        case SUPER:
         case TEMPLATE_NO_SUB:
         case TEMPLATE_TAIL:
         case DEFAULT:
