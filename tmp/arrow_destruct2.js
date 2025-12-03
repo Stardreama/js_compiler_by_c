@@ -1,1 +1,0 @@
-﻿const arrow = ({ value }) => value;

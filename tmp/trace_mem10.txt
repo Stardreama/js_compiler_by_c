@@ -1,1 +1,0 @@
-[PASS] tmp/repro_mem10.js - no syntax errors detected.
