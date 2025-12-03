@@ -2,7 +2,7 @@
 
 由于数据集中的 JavaScript 文件数量庞大，控制台上滚动的 `Syntax error #...` 输出不便于快速定位问题。现已在测试流程中新增自动记录机制：
 
-1. 执行 `./make test <路径>` 或 `build.bat test-parse` 时，解析器会把每一次语法错误记录到 `build/parser_error_locations.log`。
+1. 执行 `./make test <路径>` 或 `make test-parse` 时，解析器会把每一次语法错误记录到 `build/parser_error_locations.log`。
 2. 单条记录格式：
    ```
    <文件绝对或相对路径>:<行号>:<列号>: <Bison 错误提示>

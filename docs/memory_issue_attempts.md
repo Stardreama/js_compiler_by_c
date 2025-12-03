@@ -51,7 +51,7 @@ This document summarizes all work done so far to diagnose and fix the GLR "memor
 ## 7. Stack Capacity Fix (Dec 2025)
 
 - Bison's GLR backend defaults `YYMAXDEPTH` to 10,000 stack items, which proved insufficient even though the failing trace never exceeded 16 concurrent stacks; the repeated member-access reductions simply churned through far more than 10k GLR items before commitments occurred.
-- Added an override in `src/parser.y` (inside the `%{ … %}` prologue) to `#define YYMAXDEPTH 200000` before Bison's headers are emitted, then rebuilt via `make parser` so `build/generated/parser.c` picks up the new value.
+- Added an override in `src/parser.y` (inside the `%{ … %}` prologue) to `#define YYMAXDEPTH 1000000` before Bison's headers are emitted, then rebuilt via `make parser` so `build/generated/parser.c` picks up the new value.
 - Reran `js_parser.exe tmp\repro_mem10.js` and `tmp\repro_mem16.js` (both with and without `JS_PARSER_TRACE=1`). The former now reports `[PASS]` and the trace log no longer contains "memory exhausted"—peak stack id remains 15, but the run finishes cleanly because the GLR stack can continue expanding.
 - Validated via `python tmp/trace_compare.py tmp/trace_mem10.log tmp/trace_mem16.log` that split statistics are unchanged (still ~76 `.` splits on the repro), confirming we mitigated the failure by enlarging the stack budget rather than altering the grammar's behavior.
 - Locked the change in with `make test tmp\repro_mem10.js` to ensure the harness also records the repro as passing. Longer term we still plan to shrink the `_no_obj` branching factor, but the parser is unblocked for dataset sweeps now that GLR no longer aborts early.

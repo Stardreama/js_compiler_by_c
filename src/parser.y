@@ -10,18 +10,24 @@
 #include <ctype.h>
 #include "ast.h"
 #include "diagnostics.h"
+#include "postfix_suffix.h"
 
 
 int yylex(void);
 void yyerror(const char *s);
 
 #ifndef YYMAXDEPTH
-#define YYMAXDEPTH 200000
+#define YYMAXDEPTH 1000000 /* Allow deeper GLR stacks for dense member/call chains */
+#endif
+
+#ifndef YYINITDEPTH
+#define YYINITDEPTH 16000   /* Start with a larger pool to reduce early reallocations */
 #endif
 
 static ASTNode *g_parser_ast_root = NULL;
 static int g_parser_error_count = 0;
 static bool g_parser_module_mode = true;
+static char *dup_string(const char *text);
 
 #ifndef JS_METHOD_INFO_DEFINED
 #define JS_METHOD_INFO_DEFINED
@@ -44,6 +50,211 @@ static ASTNode *wrap_destructuring_target(ASTNode *target) {
         return ast_make_binding_pattern(target, NULL);
     }
     return target;
+}
+
+static ASTNode *make_binding_with_initializer(ASTNode *target, ASTNode *initializer);
+static ASTNode *convert_assignment_target(ASTNode *expr, bool allow_object_literal);
+static ASTNode *convert_array_literal_to_binding(ASTNode *expr, bool allow_object_literal);
+static ASTNode *convert_object_literal_to_binding(ASTNode *expr);
+
+static ASTNode *make_binding_with_initializer(ASTNode *target, ASTNode *initializer) {
+    if (!target) {
+        return NULL;
+    }
+    if (target->type == AST_BINDING_PATTERN) {
+        if (initializer && !target->data.binding_pattern.initializer) {
+            target->data.binding_pattern.initializer = initializer;
+        }
+        return target;
+    }
+    return ast_make_binding_pattern(target, initializer);
+}
+
+static ASTNode *convert_assignment_target(ASTNode *expr, bool allow_object_literal) {
+    if (!expr) {
+        return NULL;
+    }
+    switch (expr->type) {
+        case AST_IDENTIFIER:
+            return expr;
+        case AST_ARRAY_LITERAL:
+            return convert_array_literal_to_binding(expr, allow_object_literal);
+        case AST_OBJECT_LITERAL:
+            return allow_object_literal ? convert_object_literal_to_binding(expr) : NULL;
+        case AST_ASSIGN_EXPR:
+            if (expr->data.assign.op && strcmp(expr->data.assign.op, "=") == 0) {
+                ASTNode *lhs = convert_assignment_target(expr->data.assign.left, allow_object_literal);
+                if (!lhs) {
+                    return NULL;
+                }
+                return make_binding_with_initializer(lhs, expr->data.assign.right);
+            }
+            return NULL;
+        default:
+            return NULL;
+    }
+}
+
+static ASTNode *convert_array_literal_to_binding(ASTNode *expr, bool allow_object_literal) {
+    if (!expr || expr->type != AST_ARRAY_LITERAL) {
+        return NULL;
+    }
+    ASTList *converted = NULL;
+    ASTList *elem = expr->data.array_literal.elements;
+    while (elem) {
+        ASTNode *item = elem->node;
+        if (!item) {
+            elem = elem->next;
+            continue;
+        }
+        ASTNode *converted_item = NULL;
+        if (item->type == AST_ARRAY_HOLE) {
+            converted_item = ast_make_array_hole();
+        } else if (item->type == AST_SPREAD_ELEMENT) {
+            ASTNode *rest_target = convert_assignment_target(item->data.spread_element.argument, allow_object_literal);
+            if (!rest_target) {
+                return NULL;
+            }
+            converted_item = ast_make_rest_element(rest_target);
+        } else {
+            ASTNode *init = NULL;
+            ASTNode *value = item;
+            if (item->type == AST_ASSIGN_EXPR && item->data.assign.op &&
+                strcmp(item->data.assign.op, "=") == 0) {
+                value = item->data.assign.left;
+                init = item->data.assign.right;
+            }
+            ASTNode *target = convert_assignment_target(value, allow_object_literal);
+            if (!target) {
+                return NULL;
+            }
+            converted_item = make_binding_with_initializer(target, init);
+        }
+        converted = ast_list_append(converted, converted_item);
+        elem = elem->next;
+    }
+    return ast_make_array_binding(converted);
+}
+
+static ASTNode *convert_object_literal_to_binding(ASTNode *expr) {
+    if (!expr || expr->type != AST_OBJECT_LITERAL) {
+        return NULL;
+    }
+    ASTList *converted = NULL;
+    for (ASTList *prop = expr->data.object_literal.properties; prop; prop = prop->next) {
+        ASTNode *item = prop->node;
+        if (!item) {
+            continue;
+        }
+        if (item->type == AST_SPREAD_ELEMENT) {
+            ASTNode *rest_target = convert_assignment_target(item->data.spread_element.argument, true);
+            if (!rest_target) {
+                return NULL;
+            }
+            converted = ast_list_append(converted, ast_make_rest_element(rest_target));
+            continue;
+        }
+        if (item->type != AST_PROPERTY) {
+            return NULL;
+        }
+        bool is_identifier_key = item->data.property.key.is_identifier;
+        char *key_copy = dup_string(item->data.property.key.name);
+        ASTNode *value = item->data.property.value;
+        ASTNode *init = NULL;
+        ASTNode *binding_target = NULL;
+        if (value && value->type == AST_ASSIGN_EXPR && value->data.assign.op &&
+            strcmp(value->data.assign.op, "=") == 0) {
+            binding_target = convert_assignment_target(value->data.assign.left, true);
+            init = value->data.assign.right;
+        } else {
+            binding_target = convert_assignment_target(value, true);
+        }
+        if (!binding_target) {
+            return NULL;
+        }
+        ASTNode *binding_value = make_binding_with_initializer(binding_target, init);
+        bool shorthand = false;
+        if (is_identifier_key && value && value->type == AST_IDENTIFIER && item->data.property.key.name) {
+            shorthand = strcmp(item->data.property.key.name, value->data.identifier.name) == 0;
+        }
+        converted = ast_list_append(converted,
+                                    ast_make_binding_property(key_copy, is_identifier_key, binding_value, shorthand));
+    }
+    return ast_make_object_binding(converted);
+}
+
+static PostfixSuffix *alloc_suffix(PostfixSuffixKind kind) {
+    PostfixSuffix *suffix = (PostfixSuffix *)calloc(1, sizeof(PostfixSuffix));
+    if (!suffix) {
+        fprintf(stderr, "Out of memory while building postfix suffix chain\n");
+        exit(EXIT_FAILURE);
+    }
+        suffix->kind = kind;
+        return suffix;
+}
+
+static PostfixSuffix *make_suffix_prop(char *name) {
+    PostfixSuffix *suffix = alloc_suffix(POSTFIX_SUFFIX_PROP);
+    suffix->data.property_name = name;
+    return suffix;
+}
+
+static PostfixSuffix *make_suffix_computed(ASTNode *expr) {
+    PostfixSuffix *suffix = alloc_suffix(POSTFIX_SUFFIX_COMPUTED);
+    suffix->data.computed_expr = expr;
+    return suffix;
+}
+
+static PostfixSuffix *make_suffix_call(ASTList *args) {
+    PostfixSuffix *suffix = alloc_suffix(POSTFIX_SUFFIX_CALL);
+    suffix->data.arguments = args;
+    return suffix;
+}
+
+static PostfixSuffix *make_suffix_template(ASTNode *literal) {
+    PostfixSuffix *suffix = alloc_suffix(POSTFIX_SUFFIX_TEMPLATE);
+    suffix->data.template_literal = literal;
+    return suffix;
+}
+
+static PostfixSuffix *append_suffix(PostfixSuffix *list, PostfixSuffix *item) {
+    if (!item) {
+        return list;
+    }
+    item->next = NULL;
+    if (!list) {
+        return item;
+    }
+    PostfixSuffix *tail = list;
+    while (tail->next) {
+        tail = tail->next;
+    }
+    tail->next = item;
+    return list;
+}
+
+static ASTNode *apply_suffix_chain(ASTNode *base, PostfixSuffix *chain) {
+    PostfixSuffix *current = chain;
+    while (current) {
+        PostfixSuffix *next = current->next;
+        switch (current->kind) {
+            case POSTFIX_SUFFIX_PROP:
+                base = ast_make_member(base, ast_make_identifier(current->data.property_name), false);
+                break;
+            case POSTFIX_SUFFIX_COMPUTED:
+                base = ast_make_member(base, current->data.computed_expr, true);
+                break;
+            case POSTFIX_SUFFIX_CALL:
+                base = ast_make_call(base, current->data.arguments);
+                break;
+            case POSTFIX_SUFFIX_TEMPLATE:
+                base = ast_make_tagged_template(base, current->data.template_literal);
+                break;
+        }
+        free(current);
+        current = next;
+    }
+    return base;
 }
 
 static char *dup_string(const char *text) {
@@ -236,6 +447,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 
 %code requires {
     #include "ast.h"
+    #include "postfix_suffix.h"
     #ifndef JS_METHOD_INFO_DEFINED
     #define JS_METHOD_INFO_DEFINED
     typedef struct MethodInfo {
@@ -255,6 +467,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
     ASTList *list;
     char *str;
     int boolean;
+    PostfixSuffix *suffix;
     struct {
         ASTNode *body;
         bool is_expression;
@@ -265,6 +478,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
     } template_parts;
     MethodInfo method;
 }
+
 
 %token VAR LET CONST FUNCTION FUNCTION_DECL IF ELSE FOR RETURN ASYNC AWAIT IMPORT EXPORT
 %token WHILE DO BREAK CONTINUE
@@ -306,7 +520,7 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %type <node> program module_item stmt block var_stmt var_stmt_no_in return_stmt if_stmt for_stmt while_stmt do_stmt switch_stmt try_stmt with_stmt labeled_stmt break_stmt continue_stmt throw_stmt func_decl for_init for_in_left opt_expr catch_clause finally_clause finally_clause_opt switch_case var_decl var_decl_no_in class_decl class_expr class_element method_definition getter_definition setter_definition computed_property class_heritage_opt import_stmt export_stmt import_default_binding namespace_import import_specifier module_specifier export_specifier
 %type <node> expr assignment_expr assignment_expr_no_pattern conditional_expr logical_or_expr logical_and_expr bitwise_or_expr bitwise_xor_expr bitwise_and_expr equality_expr relational_expr shift_expr additive_expr multiplicative_expr unary_expr postfix_expr postfix_expr_no_arr left_hand_side_expr left_hand_side_expr_no_arr call_expr call_expr_no_arr member_expr member_expr_no_arr new_expr new_expr_no_arr primary_expr primary_no_arr function_expr template_literal
 %type <node> assignment_expr_no_pattern_no_in conditional_expr_no_in logical_or_expr_no_in logical_and_expr_no_in bitwise_or_expr_no_in bitwise_xor_expr_no_in bitwise_and_expr_no_in equality_expr_no_in relational_expr_no_in
-%type <node> expr_no_obj assignment_expr_no_obj assignment_expr_no_pattern_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj postfix_expr_no_obj_no_arr left_hand_side_expr_no_obj left_hand_side_expr_no_obj_no_arr member_expr_no_obj member_expr_no_obj_no_arr member_call_expr_no_obj member_call_expr_no_obj_no_arr new_expr_no_obj new_expr_no_obj_no_arr primary_no_obj primary_no_obj_no_arr
+%type <node> expr_no_obj assignment_expr_no_obj assignment_expr_no_pattern_no_obj conditional_expr_no_obj logical_or_expr_no_obj logical_and_expr_no_obj bitwise_or_expr_no_obj bitwise_xor_expr_no_obj bitwise_and_expr_no_obj equality_expr_no_obj relational_expr_no_obj shift_expr_no_obj additive_expr_no_obj multiplicative_expr_no_obj unary_expr_no_obj postfix_expr_no_obj postfix_expr_no_obj_no_arr left_hand_side_expr_no_obj left_hand_side_expr_no_obj_no_arr member_expr_no_obj member_expr_no_obj_no_arr member_call_expr_no_obj member_call_expr_no_obj_no_arr new_expr_no_obj new_expr_no_obj_no_arr primary_no_obj primary_no_obj_no_arr object_literal_expr_no_obj
 %type <node> expr_no_in_no_obj assignment_expr_no_in_no_obj assignment_expr_no_pattern_no_in_no_obj conditional_expr_no_obj_no_in logical_or_expr_no_obj_no_in logical_and_expr_no_obj_no_in bitwise_or_expr_no_obj_no_in bitwise_xor_expr_no_obj_no_in bitwise_and_expr_no_obj_no_in equality_expr_no_obj_no_in relational_expr_no_obj_no_in
 %type <node> yield_expr spread_element el_item arg_item
 %type <node> binding_element binding_initializer_opt binding_initializer_opt_no_in object_binding array_binding binding_property binding_rest_property binding_rest_element assignment_pattern object_assignment_pattern array_assignment_pattern assignment_property assignment_element assignment_rest_element assignment_target destructuring_assignment_target destructuring_assignment_target_no_obj for_binding for_binding_declarator catch_parameter rest_param
@@ -318,10 +532,31 @@ static ASTNode *handle_double_prefix(char *first, char *second, ASTNode *method)
 %type <str> property_name property_name_keyword
 %type <str> for_of_keyword from_keyword as_keyword
 
+%type <suffix> member_suffix_seq member_noncall_suffix call_suffix_seq call_any_suffix call_suffix_initial
+
 
 %type <list> stmt_list module_item_list opt_param_list param_list param_list_items opt_arg_list arg_list el_list prop_list switch_case_list case_stmt_seq var_decl_list var_decl_list_no_in binding_property_list binding_property_sequence binding_element_list binding_elision binding_elision_opt assignment_property_list assignment_property_sequence assignment_element_list class_body class_element_list class_element_list_opt import_clause named_imports import_specifier_list export_clause export_specifier_list
 %type <template_parts> template_part_list
 %type <boolean> generator_marker_opt async_modifier_opt
+
+%destructor { if ($$) free($$); } <str>
+%destructor { if ($$.body) ast_free($$.body); } <arrow>
+%destructor {
+    if ($$.quasis) {
+        ast_list_free($$.quasis);
+    }
+    if ($$.exprs) {
+        ast_list_free($$.exprs);
+    }
+} <template_parts>
+%destructor {
+    if ($$.computed_key) {
+        ast_free($$.computed_key);
+    }
+    if ($$.name) {
+        free($$.name);
+    }
+} <method>
 
 %%
 
@@ -817,20 +1052,24 @@ throw_stmt
 expr
   : assignment_expr
       { $$ = $1; }
-    | expr ',' assignment_expr
+  | expr ',' assignment_expr
             { $$ = ast_make_sequence($1, $3); }
   ;
 
 assignment_expr
-    : destructuring_assignment_target '=' assignment_expr_no_pattern %dprec 2
-        { $$ = ast_make_assignment("=", wrap_destructuring_target($1), $3); }
-  | assignment_expr_no_pattern
+  : assignment_expr_no_pattern
       { $$ = $1; }
   ;
 
 assignment_expr_no_pattern
 	: postfix_expr_no_arr '=' assignment_expr_no_pattern
-	    { $$ = ast_make_assignment("=", wrap_destructuring_target($1), $3); }
+	    {
+	        ASTNode *lhs = convert_assignment_target($1, true);
+	        if (!lhs) {
+	            lhs = $1;
+	        }
+	        $$ = ast_make_assignment("=", wrap_destructuring_target(lhs), $3);
+	    }
   | postfix_expr_no_arr PLUS_ASSIGN assignment_expr_no_pattern
       { $$ = ast_make_assignment("+=", $1, $3); }
   | postfix_expr_no_arr MINUS_ASSIGN assignment_expr_no_pattern
@@ -863,7 +1102,13 @@ assignment_expr_no_pattern
 
 assignment_expr_no_pattern_no_in
 	: postfix_expr_no_arr '=' assignment_expr_no_pattern_no_in
-	    { $$ = ast_make_assignment("=", wrap_destructuring_target($1), $3); }
+	    {
+	        ASTNode *lhs = convert_assignment_target($1, true);
+	        if (!lhs) {
+	            lhs = $1;
+	        }
+	        $$ = ast_make_assignment("=", wrap_destructuring_target(lhs), $3);
+	    }
   | postfix_expr_no_arr PLUS_ASSIGN assignment_expr_no_pattern_no_in
       { $$ = ast_make_assignment("+=", $1, $3); }
   | postfix_expr_no_arr MINUS_ASSIGN assignment_expr_no_pattern_no_in
@@ -990,7 +1235,7 @@ equality_expr
   | equality_expr NE_STRICT relational_expr
       { $$ = ast_make_binary("!==", $1, $3); }
   ;
-
+ 
 equality_expr_no_in
     : relational_expr_no_in
       { $$ = $1; }
@@ -1125,27 +1370,15 @@ left_hand_side_expr_no_arr
   ;
 
 member_expr
-  : primary_expr
-      { $$ = $1; }
-  | member_expr '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | member_expr '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | member_expr template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
+  : primary_expr member_suffix_seq
+      { $$ = apply_suffix_chain($1, $2); }
   | NEW member_expr '(' opt_arg_list ')'
       { $$ = ast_make_new_expr($2, $4); }
   ;
 
 member_expr_no_arr
-  : primary_no_arr
-      { $$ = $1; }
-  | member_expr_no_arr '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | member_expr_no_arr '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | member_expr_no_arr template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
+  : primary_no_arr member_suffix_seq
+      { $$ = apply_suffix_chain($1, $2); }
   | NEW member_expr_no_arr '(' opt_arg_list ')'
       { $$ = ast_make_new_expr($2, $4); }
   ;
@@ -1165,30 +1398,49 @@ new_expr_no_arr
   ;
 
 call_expr
-  : member_expr '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | call_expr '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | call_expr '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | call_expr '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | call_expr template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
+  : member_expr call_suffix_seq
+      { $$ = apply_suffix_chain($1, $2); }
   ;
 
 call_expr_no_arr
-  : member_expr_no_arr '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | call_expr_no_arr '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | call_expr_no_arr '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | call_expr_no_arr '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | call_expr_no_arr template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
+  : member_expr_no_arr call_suffix_seq
+      { $$ = apply_suffix_chain($1, $2); }
   ;
+
+member_suffix_seq
+    : /* empty */
+            { $$ = NULL; }
+    | member_suffix_seq member_noncall_suffix
+            { $$ = append_suffix($1, $2); }
+    ;
+
+member_noncall_suffix
+    : '.' property_name
+            { $$ = make_suffix_prop($2); }
+    | '[' expr ']'
+            { $$ = make_suffix_computed($2); }
+    | template_literal
+            { $$ = make_suffix_template($1); }
+    ;
+
+call_suffix_seq
+    : call_suffix_seq call_any_suffix
+            { $$ = append_suffix($1, $2); }
+    | call_suffix_initial
+            { $$ = $1; }
+    ;
+
+call_any_suffix
+    : call_suffix_initial
+            { $$ = $1; }
+    | member_noncall_suffix
+            { $$ = $1; }
+    ;
+
+call_suffix_initial
+    : '(' opt_arg_list ')'
+            { $$ = make_suffix_call($2); }
+    ;
 
 opt_arg_list
   : /* empty */
@@ -1419,23 +1671,28 @@ method_name
             { $$ = method_info_from_computed($2); }
     ;
 expr_no_obj
-    : assignment_expr_no_obj
+  : assignment_expr_no_obj
             { $$ = $1; }
-    | expr_no_obj ',' assignment_expr_no_obj
+  | expr_no_obj ',' assignment_expr_no_obj
             { $$ = ast_make_sequence($1, $3); }
-    ;
+  ;
 
 assignment_expr_no_obj
-    : destructuring_assignment_target_no_obj '=' assignment_expr_no_pattern %dprec 2
-        { $$ = ast_make_assignment("=", wrap_destructuring_target($1), $3); }
-  | assignment_expr_no_pattern_no_obj
+  : assignment_expr_no_pattern_no_obj
       { $$ = $1; }
   ;
 
 
+
 assignment_expr_no_pattern_no_obj
 	: postfix_expr_no_obj_no_arr '=' assignment_expr_no_pattern
-	    { $$ = ast_make_assignment("=", wrap_destructuring_target($1), $3); }
+	    {
+	        ASTNode *lhs = convert_assignment_target($1, false);
+	        if (!lhs) {
+	            lhs = $1;
+	        }
+	        $$ = ast_make_assignment("=", wrap_destructuring_target(lhs), $3);
+	    }
   | postfix_expr_no_obj_no_arr PLUS_ASSIGN assignment_expr_no_pattern
       { $$ = ast_make_assignment("+=", $1, $3); }
   | postfix_expr_no_obj_no_arr MINUS_ASSIGN assignment_expr_no_pattern
@@ -1520,96 +1777,142 @@ conditional_expr_no_obj
 logical_or_expr_no_obj
   : logical_and_expr_no_obj
       { $$ = $1; }
-  | logical_or_expr_no_obj OR logical_and_expr_no_obj
+  | logical_or_expr_no_obj OR logical_and_expr
+      { $$ = ast_make_binary("||", $1, $3); }
+  | logical_or_expr_no_obj OR object_literal_expr_no_obj
       { $$ = ast_make_binary("||", $1, $3); }
   ;
 
 logical_and_expr_no_obj
   : bitwise_or_expr_no_obj
       { $$ = $1; }
-  | logical_and_expr_no_obj AND bitwise_or_expr_no_obj
+  | logical_and_expr_no_obj AND bitwise_or_expr
+      { $$ = ast_make_binary("&&", $1, $3); }
+  | logical_and_expr_no_obj AND object_literal_expr_no_obj
       { $$ = ast_make_binary("&&", $1, $3); }
   ;
 
 bitwise_or_expr_no_obj
   : bitwise_xor_expr_no_obj
       { $$ = $1; }
-  | bitwise_or_expr_no_obj '|' bitwise_xor_expr_no_obj
+  | bitwise_or_expr_no_obj '|' bitwise_xor_expr
+      { $$ = ast_make_binary("|", $1, $3); }
+  | bitwise_or_expr_no_obj '|' object_literal_expr_no_obj
       { $$ = ast_make_binary("|", $1, $3); }
   ;
 
 bitwise_xor_expr_no_obj
   : bitwise_and_expr_no_obj
       { $$ = $1; }
-  | bitwise_xor_expr_no_obj '^' bitwise_and_expr_no_obj
+  | bitwise_xor_expr_no_obj '^' bitwise_and_expr
+      { $$ = ast_make_binary("^", $1, $3); }
+  | bitwise_xor_expr_no_obj '^' object_literal_expr_no_obj
       { $$ = ast_make_binary("^", $1, $3); }
   ;
 
 bitwise_and_expr_no_obj
   : equality_expr_no_obj
       { $$ = $1; }
-  | bitwise_and_expr_no_obj '&' equality_expr_no_obj
+  | bitwise_and_expr_no_obj '&' equality_expr
+      { $$ = ast_make_binary("&", $1, $3); }
+  | bitwise_and_expr_no_obj '&' object_literal_expr_no_obj
       { $$ = ast_make_binary("&", $1, $3); }
   ;
 
 equality_expr_no_obj
   : relational_expr_no_obj
       { $$ = $1; }
-  | equality_expr_no_obj EQ relational_expr_no_obj
+  | equality_expr_no_obj EQ relational_expr
       { $$ = ast_make_binary("==", $1, $3); }
-  | equality_expr_no_obj NE relational_expr_no_obj
+  | equality_expr_no_obj NE relational_expr
       { $$ = ast_make_binary("!=", $1, $3); }
-  | equality_expr_no_obj EQ_STRICT relational_expr_no_obj
+  | equality_expr_no_obj EQ_STRICT relational_expr
       { $$ = ast_make_binary("===", $1, $3); }
-  | equality_expr_no_obj NE_STRICT relational_expr_no_obj
+  | equality_expr_no_obj NE_STRICT relational_expr
+      { $$ = ast_make_binary("!==", $1, $3); }
+  | equality_expr_no_obj EQ object_literal_expr_no_obj
+      { $$ = ast_make_binary("==", $1, $3); }
+  | equality_expr_no_obj NE object_literal_expr_no_obj
+      { $$ = ast_make_binary("!=", $1, $3); }
+  | equality_expr_no_obj EQ_STRICT object_literal_expr_no_obj
+      { $$ = ast_make_binary("===", $1, $3); }
+  | equality_expr_no_obj NE_STRICT object_literal_expr_no_obj
       { $$ = ast_make_binary("!==", $1, $3); }
   ;
 
 relational_expr_no_obj
   : shift_expr_no_obj
       { $$ = $1; }
-  | relational_expr_no_obj '<' shift_expr_no_obj
+  | relational_expr_no_obj '<' shift_expr
       { $$ = ast_make_binary("<", $1, $3); }
-  | relational_expr_no_obj '>' shift_expr_no_obj
+  | relational_expr_no_obj '>' shift_expr
       { $$ = ast_make_binary(">", $1, $3); }
-  | relational_expr_no_obj LE shift_expr_no_obj
+  | relational_expr_no_obj LE shift_expr
       { $$ = ast_make_binary("<=", $1, $3); }
-  | relational_expr_no_obj GE shift_expr_no_obj
+  | relational_expr_no_obj GE shift_expr
       { $$ = ast_make_binary(">=", $1, $3); }
-  | relational_expr_no_obj INSTANCEOF shift_expr_no_obj
+  | relational_expr_no_obj INSTANCEOF shift_expr
       { $$ = ast_make_binary("instanceof", $1, $3); }
-  | relational_expr_no_obj IN shift_expr_no_obj
+  | relational_expr_no_obj IN shift_expr
+      { $$ = ast_make_binary("in", $1, $3); }
+  | relational_expr_no_obj '<' object_literal_expr_no_obj
+      { $$ = ast_make_binary("<", $1, $3); }
+  | relational_expr_no_obj '>' object_literal_expr_no_obj
+      { $$ = ast_make_binary(">", $1, $3); }
+  | relational_expr_no_obj LE object_literal_expr_no_obj
+      { $$ = ast_make_binary("<=", $1, $3); }
+  | relational_expr_no_obj GE object_literal_expr_no_obj
+      { $$ = ast_make_binary(">=", $1, $3); }
+  | relational_expr_no_obj INSTANCEOF object_literal_expr_no_obj
+      { $$ = ast_make_binary("instanceof", $1, $3); }
+  | relational_expr_no_obj IN object_literal_expr_no_obj
       { $$ = ast_make_binary("in", $1, $3); }
   ;
 
 shift_expr_no_obj
   : additive_expr_no_obj
       { $$ = $1; }
-  | shift_expr_no_obj LSHIFT additive_expr_no_obj
+  | shift_expr_no_obj LSHIFT additive_expr
       { $$ = ast_make_binary("<<", $1, $3); }
-  | shift_expr_no_obj RSHIFT additive_expr_no_obj
+  | shift_expr_no_obj RSHIFT additive_expr
       { $$ = ast_make_binary(">>", $1, $3); }
-  | shift_expr_no_obj URSHIFT additive_expr_no_obj
+  | shift_expr_no_obj URSHIFT additive_expr
+      { $$ = ast_make_binary(">>>", $1, $3); }
+  | shift_expr_no_obj LSHIFT object_literal_expr_no_obj
+      { $$ = ast_make_binary("<<", $1, $3); }
+  | shift_expr_no_obj RSHIFT object_literal_expr_no_obj
+      { $$ = ast_make_binary(">>", $1, $3); }
+  | shift_expr_no_obj URSHIFT object_literal_expr_no_obj
       { $$ = ast_make_binary(">>>", $1, $3); }
   ;
 
 additive_expr_no_obj
   : multiplicative_expr_no_obj
       { $$ = $1; }
-  | additive_expr_no_obj '+' multiplicative_expr_no_obj
+  | additive_expr_no_obj '+' multiplicative_expr
       { $$ = ast_make_binary("+", $1, $3); }
-  | additive_expr_no_obj '-' multiplicative_expr_no_obj
+  | additive_expr_no_obj '-' multiplicative_expr
+      { $$ = ast_make_binary("-", $1, $3); }
+  | additive_expr_no_obj '+' object_literal_expr_no_obj
+      { $$ = ast_make_binary("+", $1, $3); }
+  | additive_expr_no_obj '-' object_literal_expr_no_obj
       { $$ = ast_make_binary("-", $1, $3); }
   ;
 
 multiplicative_expr_no_obj
   : unary_expr_no_obj
       { $$ = $1; }
-  | multiplicative_expr_no_obj '*' unary_expr_no_obj
+  | multiplicative_expr_no_obj '*' unary_expr
       { $$ = ast_make_binary("*", $1, $3); }
-  | multiplicative_expr_no_obj '/' unary_expr_no_obj
+  | multiplicative_expr_no_obj '/' unary_expr
       { $$ = ast_make_binary("/", $1, $3); }
-  | multiplicative_expr_no_obj '%' unary_expr_no_obj
+  | multiplicative_expr_no_obj '%' unary_expr
+      { $$ = ast_make_binary("%", $1, $3); }
+  | multiplicative_expr_no_obj '*' object_literal_expr_no_obj
+      { $$ = ast_make_binary("*", $1, $3); }
+  | multiplicative_expr_no_obj '/' object_literal_expr_no_obj
+      { $$ = ast_make_binary("/", $1, $3); }
+  | multiplicative_expr_no_obj '%' object_literal_expr_no_obj
       { $$ = ast_make_binary("%", $1, $3); }
   ;
 
@@ -1671,55 +1974,27 @@ left_hand_side_expr_no_obj_no_arr
     ;
 
 member_expr_no_obj
-  : primary_no_obj
-      { $$ = $1; }
-  | member_expr_no_obj '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | member_expr_no_obj '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | member_expr_no_obj template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
+  : primary_no_obj member_suffix_seq
+      { $$ = apply_suffix_chain($1, $2); }
   | NEW member_expr_no_obj '(' opt_arg_list ')'
       { $$ = ast_make_new_expr($2, $4); }
   ;
 
 member_expr_no_obj_no_arr
-  : primary_no_obj_no_arr
-      { $$ = $1; }
-  | member_expr_no_obj_no_arr '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | member_expr_no_obj_no_arr '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | member_expr_no_obj_no_arr template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
+  : primary_no_obj_no_arr member_suffix_seq
+      { $$ = apply_suffix_chain($1, $2); }
   | NEW member_expr_no_obj_no_arr '(' opt_arg_list ')'
       { $$ = ast_make_new_expr($2, $4); }
   ;
 
 member_call_expr_no_obj
-  : member_expr_no_obj '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | member_call_expr_no_obj '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | member_call_expr_no_obj '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | member_call_expr_no_obj '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | member_call_expr_no_obj template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
+  : member_expr_no_obj call_suffix_seq
+      { $$ = apply_suffix_chain($1, $2); }
   ;
 
 member_call_expr_no_obj_no_arr
-  : member_expr_no_obj_no_arr '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | member_call_expr_no_obj_no_arr '(' opt_arg_list ')'
-      { $$ = ast_make_call($1, $3); }
-  | member_call_expr_no_obj_no_arr '[' expr ']'
-      { $$ = ast_make_member($1, $3, true); }
-  | member_call_expr_no_obj_no_arr '.' property_name
-      { $$ = ast_make_member($1, ast_make_identifier($3), false); }
-  | member_call_expr_no_obj_no_arr template_literal
-      { $$ = ast_make_tagged_template($1, $2); }
+  : member_expr_no_obj_no_arr call_suffix_seq
+      { $$ = apply_suffix_chain($1, $2); }
   ;
 
 new_expr_no_obj
@@ -1728,6 +2003,7 @@ new_expr_no_obj
   | NEW new_expr_no_obj
       { $$ = ast_make_new_expr($2, NULL); }
   ;
+
 
 new_expr_no_obj_no_arr
   : member_expr_no_obj_no_arr
@@ -1741,17 +2017,15 @@ primary_no_obj
       { $$ = $1; }
   | array_literal
       { $$ = $1; }
-  | object_literal
-      { $$ = $1; }
   ;
 
 primary_no_obj_no_arr
   : IDENTIFIER
       { $$ = ast_make_identifier($1); }
   | THIS
-        { $$ = ast_make_this_expr(); }
-    | SUPER
-                { $$ = ast_make_super_expr(); }
+      { $$ = ast_make_this_expr(); }
+  | SUPER
+      { $$ = ast_make_super_expr(); }
   | NUMBER
       { $$ = ast_make_number_literal($1); }
   | STRING
@@ -1771,29 +2045,31 @@ primary_no_obj_no_arr
   | template_literal
       { $$ = $1; }
   | function_expr
-        { $$ = $1; }
-    | object_literal
-            { $$ = $1; }
+      { $$ = $1; }
   ;
-
+ 
 expr_no_in_no_obj
   : assignment_expr_no_in_no_obj
-        { $$ = $1; }
+      { $$ = $1; }
   | expr_no_in_no_obj ',' assignment_expr_no_in_no_obj
-        { $$ = ast_make_sequence($1, $3); }
+      { $$ = ast_make_sequence($1, $3); }
   ;
 
 assignment_expr_no_in_no_obj
-  : destructuring_assignment_target_no_obj '=' assignment_expr_no_pattern_no_in %dprec 2
-      { $$ = ast_make_assignment("=", wrap_destructuring_target($1), $3); }
-  | assignment_expr_no_pattern_no_in_no_obj
-        { $$ = $1; }
+  : assignment_expr_no_pattern_no_in_no_obj
+      { $$ = $1; }
   ;
 
 
 assignment_expr_no_pattern_no_in_no_obj
 	: postfix_expr_no_obj_no_arr '=' assignment_expr_no_pattern_no_in
-	    { $$ = ast_make_assignment("=", wrap_destructuring_target($1), $3); }
+	    {
+	        ASTNode *lhs = convert_assignment_target($1, false);
+	        if (!lhs) {
+	            lhs = $1;
+	        }
+	        $$ = ast_make_assignment("=", wrap_destructuring_target(lhs), $3);
+	    }
   | postfix_expr_no_obj_no_arr PLUS_ASSIGN assignment_expr_no_pattern_no_in
       { $$ = ast_make_assignment("+=", $1, $3); }
   | postfix_expr_no_obj_no_arr MINUS_ASSIGN assignment_expr_no_pattern_no_in
@@ -1818,7 +2094,7 @@ assignment_expr_no_pattern_no_in_no_obj
       { $$ = ast_make_assignment(">>>=", $1, $3); }
   | arrow_function
       { $$ = $1; }
-    | conditional_expr_no_obj_no_in
+  | conditional_expr_no_obj_no_in
       { $$ = $1; }
   | yield_expr
       { $$ = $1; }
@@ -1843,63 +2119,91 @@ conditional_expr_no_obj_no_in
 logical_or_expr_no_obj_no_in
   : logical_and_expr_no_obj_no_in
       { $$ = $1; }
-  | logical_or_expr_no_obj_no_in OR logical_and_expr_no_obj_no_in
+  | logical_or_expr_no_obj_no_in OR logical_and_expr_no_in
+      { $$ = ast_make_binary("||", $1, $3); }
+  | logical_or_expr_no_obj_no_in OR object_literal_expr_no_obj
       { $$ = ast_make_binary("||", $1, $3); }
   ;
 
 logical_and_expr_no_obj_no_in
   : bitwise_or_expr_no_obj_no_in
       { $$ = $1; }
-  | logical_and_expr_no_obj_no_in AND bitwise_or_expr_no_obj_no_in
+  | logical_and_expr_no_obj_no_in AND bitwise_or_expr_no_in
+      { $$ = ast_make_binary("&&", $1, $3); }
+  | logical_and_expr_no_obj_no_in AND object_literal_expr_no_obj
       { $$ = ast_make_binary("&&", $1, $3); }
   ;
 
 bitwise_or_expr_no_obj_no_in
   : bitwise_xor_expr_no_obj_no_in
       { $$ = $1; }
-  | bitwise_or_expr_no_obj_no_in '|' bitwise_xor_expr_no_obj_no_in
+  | bitwise_or_expr_no_obj_no_in '|' bitwise_xor_expr_no_in
+      { $$ = ast_make_binary("|", $1, $3); }
+  | bitwise_or_expr_no_obj_no_in '|' object_literal_expr_no_obj
       { $$ = ast_make_binary("|", $1, $3); }
   ;
 
 bitwise_xor_expr_no_obj_no_in
   : bitwise_and_expr_no_obj_no_in
       { $$ = $1; }
-  | bitwise_xor_expr_no_obj_no_in '^' bitwise_and_expr_no_obj_no_in
+  | bitwise_xor_expr_no_obj_no_in '^' bitwise_and_expr_no_in
+      { $$ = ast_make_binary("^", $1, $3); }
+  | bitwise_xor_expr_no_obj_no_in '^' object_literal_expr_no_obj
       { $$ = ast_make_binary("^", $1, $3); }
   ;
 
 bitwise_and_expr_no_obj_no_in
   : equality_expr_no_obj_no_in
       { $$ = $1; }
-  | bitwise_and_expr_no_obj_no_in '&' equality_expr_no_obj_no_in
+  | bitwise_and_expr_no_obj_no_in '&' equality_expr_no_in
+      { $$ = ast_make_binary("&", $1, $3); }
+  | bitwise_and_expr_no_obj_no_in '&' object_literal_expr_no_obj
       { $$ = ast_make_binary("&", $1, $3); }
   ;
 
 equality_expr_no_obj_no_in
   : relational_expr_no_obj_no_in
       { $$ = $1; }
-  | equality_expr_no_obj_no_in EQ relational_expr_no_obj_no_in
+  | equality_expr_no_obj_no_in EQ relational_expr_no_in
       { $$ = ast_make_binary("==", $1, $3); }
-  | equality_expr_no_obj_no_in NE relational_expr_no_obj_no_in
+  | equality_expr_no_obj_no_in NE relational_expr_no_in
       { $$ = ast_make_binary("!=", $1, $3); }
-  | equality_expr_no_obj_no_in EQ_STRICT relational_expr_no_obj_no_in
+  | equality_expr_no_obj_no_in EQ_STRICT relational_expr_no_in
       { $$ = ast_make_binary("===", $1, $3); }
-  | equality_expr_no_obj_no_in NE_STRICT relational_expr_no_obj_no_in
+  | equality_expr_no_obj_no_in NE_STRICT relational_expr_no_in
+      { $$ = ast_make_binary("!==", $1, $3); }
+  | equality_expr_no_obj_no_in EQ object_literal_expr_no_obj
+      { $$ = ast_make_binary("==", $1, $3); }
+  | equality_expr_no_obj_no_in NE object_literal_expr_no_obj
+      { $$ = ast_make_binary("!=", $1, $3); }
+  | equality_expr_no_obj_no_in EQ_STRICT object_literal_expr_no_obj
+      { $$ = ast_make_binary("===", $1, $3); }
+  | equality_expr_no_obj_no_in NE_STRICT object_literal_expr_no_obj
       { $$ = ast_make_binary("!==", $1, $3); }
   ;
 
 relational_expr_no_obj_no_in
   : shift_expr_no_obj
       { $$ = $1; }
-  | relational_expr_no_obj_no_in '<' shift_expr_no_obj
+  | relational_expr_no_obj_no_in '<' shift_expr
       { $$ = ast_make_binary("<", $1, $3); }
-  | relational_expr_no_obj_no_in '>' shift_expr_no_obj
+  | relational_expr_no_obj_no_in '>' shift_expr
       { $$ = ast_make_binary(">", $1, $3); }
-  | relational_expr_no_obj_no_in LE shift_expr_no_obj
+  | relational_expr_no_obj_no_in LE shift_expr
       { $$ = ast_make_binary("<=", $1, $3); }
-  | relational_expr_no_obj_no_in GE shift_expr_no_obj
+  | relational_expr_no_obj_no_in GE shift_expr
       { $$ = ast_make_binary(">=", $1, $3); }
-  | relational_expr_no_obj_no_in INSTANCEOF shift_expr_no_obj
+  | relational_expr_no_obj_no_in INSTANCEOF shift_expr
+      { $$ = ast_make_binary("instanceof", $1, $3); }
+  | relational_expr_no_obj_no_in '<' object_literal_expr_no_obj
+      { $$ = ast_make_binary("<", $1, $3); }
+  | relational_expr_no_obj_no_in '>' object_literal_expr_no_obj
+      { $$ = ast_make_binary(">", $1, $3); }
+  | relational_expr_no_obj_no_in LE object_literal_expr_no_obj
+      { $$ = ast_make_binary("<=", $1, $3); }
+  | relational_expr_no_obj_no_in GE object_literal_expr_no_obj
+      { $$ = ast_make_binary(">=", $1, $3); }
+  | relational_expr_no_obj_no_in INSTANCEOF object_literal_expr_no_obj
       { $$ = ast_make_binary("instanceof", $1, $3); }
   ;
 
@@ -1940,6 +2244,11 @@ object_literal
   | '{' prop_list opt_trailing_comma '}'
       { $$ = ast_make_object_literal($2); }
   ;
+
+object_literal_expr_no_obj
+    : object_literal
+            { $$ = $1; }
+    ;
 
 template_literal
   : TEMPLATE_NO_SUB

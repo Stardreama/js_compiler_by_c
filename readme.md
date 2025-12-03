@@ -122,7 +122,7 @@ make test
 
 ### 5. 调试与排错
 
-- `build/parser_error_locations.log`：`make test`/`build.bat test-parse` 自动刷新，包含所有失败的 `文件:行:列:错误信息`；配合 `build/test_failures.log` 能快速定位。
+- `build/parser_error_locations.log`：`make test`/`make test-parse` 自动刷新，包含所有失败的 `文件:行:列:错误信息`；配合 `build/test_failures.log` 能快速定位。
 - `tmp/`：用于存放最小复现脚本，`make test tmp/repro*.js` 可单独验证。
 - `docs/error_diagnostics.md`：总结日志与排查策略；`docs/parser.md`/`docs/asi_implementation.md` 记录语法/ASI 结构细节。
 

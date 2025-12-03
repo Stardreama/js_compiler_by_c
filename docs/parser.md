@@ -106,7 +106,7 @@ PowerShell（可选）：
 
 ```powershell
 cd d:\EduLibrary\OurEDA\js_compiler_by_c
-.\build.bat parser
+.\make parser
 .\js_parser.exe .\test\test_basic.js
 ```
 
@@ -185,7 +185,7 @@ cd d:\EduLibrary\OurEDA\js_compiler_by_c
 - **语法覆盖**：`class` 声明/表达式现已支持，可选 `extends` 继承、实例方法、`static` 静态方法以及 `get/set` 访问器。类体中的 `;` 被视为空元素，不会生成 AST 节点。
 - **AST 节点**：`AST_CLASS_DECL/EXPR`、`AST_METHOD_DEF`、`AST_SUPER`、`AST_COMPUTED_PROP` 全量启用。语法动作会在必要时调用 `maybe_tag_constructor`/`mark_method_static`，确保 `constructor` 仅在非静态方法上标记为构造器，静态 getter/setter 则保留 `static` 标记。
 - **对象字面量增强**：`prop` 规则支持方法速记（含生成器）、访问器以及计算属性键（`[{expr}]: value`）。AST 使用 `AST_METHOD_DEF` 直接记录这些成员，可在 `--dump-ast` 中看到同类结构。
-- **测试**：新增 `test/es6_stage4/class_basic.js`、`class_inheritance.js`、`object_literal_enhancement.js`，可通过 `make test test/es6_stage4` 或 `build.bat test test\es6_stage4` 运行，覆盖静态成员、`super` 调用、计算属性键及访问器。
+- **测试**：新增 `test/es6_stage4/class_basic.js`、`class_inheritance.js`、`object_literal_enhancement.js`，可通过 `make test test/es6_stage4` 或 `make test test\es6_stage4` 运行，覆盖静态成员、`super` 调用、计算属性键及访问器。
 - **适配层**：类体被视为 `BRACE_BLOCK`，维持此前的 ASI 行为；访问器/方法的新增语法仅在 `parser.y` 层处理，词法无需改动。
 - **回归/待办**：`make test ./test/es6_stage4` 于 2025-12-01 通过；`test/JavaScript_Datasets/goodjs` 仍包含 `for-of`、`async`、`decorator` 等未在 M4 范畴内的失败。进入 M5 之前，需要：① 在 `docs/es6_limitations.md` 标记剩余语法空缺；② 为常见的类/对象模式新增精简 repro；③ 将 `build/test_failures.log` 中与类相关的样例打标签，确认是否由 M4 语义造成，以免把下一阶段问题混淆。
 

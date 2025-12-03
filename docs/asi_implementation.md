@@ -6,7 +6,7 @@
 
 - **兼容范围**：遵循 ECMAScript 5.1 第 11.9 节的三类触发条件（换行、EOF、受限产生式）。
 - **实现位置**：`parser_lex_adapter.c` 在向 Bison 交付 token 前决定是否插入虚拟分号；词法阶段无需改动。
-- **测试覆盖**：`build.bat test-parse` / `make test-parse` 会顺序运行 `test/test_asi_basic.js`、`test/test_asi_return.js` 与 `test/test_asi_control.js`。
+- **测试覆盖**：`make test-parse` / `make test-parse` 会顺序运行 `test/test_asi_basic.js`、`test/test_asi_return.js` 与 `test/test_asi_control.js`。
 
 ## 触发条件明细
 
