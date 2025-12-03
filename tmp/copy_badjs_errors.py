@@ -7,7 +7,7 @@ LOG_PATH = os.path.join(
     os.path.dirname(__file__), "..", "build", "parser_error_locations.log"
 )
 DEST_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "test", "JavaScript_Datasets", "badjs_error"
+    os.path.dirname(__file__), "..", "test", "JavaScript_Datasets", "goodjs_error"
 )
 
 # Matches lines like:

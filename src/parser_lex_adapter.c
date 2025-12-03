@@ -101,7 +101,10 @@ static void update_token_state(int token) {
 
         // 3. 检查控制语句
         if (is_control_keyword(g_last_token)) {
-            push_control_paren(); // 存入 increment 后的深度
+            bool keyword_used_as_property = (g_prev_token == '.');
+            if (!keyword_used_as_property) {
+                push_control_paren(); // 存入 increment 后的深度
+            }
         }
 
     } else if (token == ')') {
