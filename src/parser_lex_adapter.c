@@ -42,7 +42,8 @@ typedef enum {
 static BraceKind g_brace_stack[CONTROL_STACK_MAX];
 static int g_brace_top = 0;
 static bool g_pending_function_body = false;
-static int g_conditional_depth = 0;
+static int g_conditional_stack[CONTROL_STACK_MAX];
+static int g_conditional_top = 0;
 static bool g_last_token_conditional_colon = false;
 
 static bool is_control_keyword(int token) {
@@ -113,10 +114,15 @@ static void update_token_state(int token) {
             g_last_token_closed_paren = true;
         }
     } else if (token == '?') {
-        g_conditional_depth++;
+        if (g_conditional_top < CONTROL_STACK_MAX) {
+            g_conditional_stack[g_conditional_top++] = g_brace_top;
+        }
     } else if (token == ':') {
-        if (g_conditional_depth > 0) {
-            g_conditional_depth--;
+        while (g_conditional_top > 0 && g_conditional_stack[g_conditional_top - 1] > g_brace_top) {
+            g_conditional_top--;
+        }
+        if (g_conditional_top > 0 && g_conditional_stack[g_conditional_top - 1] == g_brace_top) {
+            g_conditional_top--;
             current_token_is_conditional_colon = true;
         }
     } else if (token == '{') {
@@ -171,6 +177,9 @@ static void update_token_state(int token) {
             BraceKind kind = g_brace_stack[--g_brace_top];
             if (kind == BRACE_FUNCTION) {
                 g_last_token_closed_function = true;
+            }
+            while (g_conditional_top > 0 && g_conditional_stack[g_conditional_top - 1] > g_brace_top) {
+                g_conditional_top--;
             }
         }
     }
@@ -551,6 +560,8 @@ void parser_set_input(const char *input) {
     g_pending_tail = 0;
     g_skip_arrow_detection_once = false;
     g_brace_top = 0;
+    g_conditional_top = 0;
+    g_last_token_conditional_colon = false;
 }
 
 // bison 调用的词法函数
