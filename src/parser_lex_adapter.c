@@ -289,6 +289,9 @@ static bool should_insert_semicolon(int last_token, bool last_closed_control, bo
     }
 
     if (last_token_closed_function) {
+        if (next_token == FUNCTION_DECL) {
+            return true;
+        }
         if (next_token == '{' || next_token == '(' || next_token == '[' || next_token == '.') {
             return false;
         }
