@@ -235,6 +235,13 @@ Token lexer_next_token(Lexer *lexer) {
             return make_token(TOK_NUMBER, token_start, lexer->cursor, token_line, token_column);
         }
 
+        // 旧式八进制整数（非严格模式）
+        "0" [0-7]+ {
+            lexer->column += (lexer->cursor - token_start);
+            lexer->prev_tok_state = PREV_TOK_NO_REGEX;
+            return make_token(TOK_NUMBER, token_start, lexer->cursor, token_line, token_column);
+        }
+
         // 带指数十进制小数
         ( ( "0" | [1-9][0-9]* ) "." [0-9]* | "." [0-9]+ )
         ( [eE] [+-]? [0-9]+ )? {
