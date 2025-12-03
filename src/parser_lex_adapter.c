@@ -609,6 +609,7 @@ int yylex(void) {
         if (mapped < 0) {
             fprintf(stderr, "Lexical error at line %d, column %d\n", tk.line, tk.column);
             token_free(&tk);
+            g_lex_error = true;
             return 0;
         }
 
@@ -674,6 +675,10 @@ int yylex(void) {
         }
         return mapped;
     }
+}
+
+int parser_had_lex_error(void) {
+    return g_lex_error ? 1 : 0;
 }
 
 // bison 的错误回调在 parser.y 中实现，这里不重复实现
