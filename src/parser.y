@@ -854,9 +854,7 @@ while_stmt
 
 do_stmt
     : DO stmt WHILE '(' expr ')' ';'
-            { $$ = ast_make_do_while($2, $5); }
-    | DO stmt WHILE '(' expr ')'
-            { $$ = ast_make_do_while($2, $5); }
+        { $$ = ast_make_do_while($2, $5); }
     ;
 
 for_init
