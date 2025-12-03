@@ -22,6 +22,7 @@ static bool g_last_token_closed_function = false;
 static bool g_last_token_closed_paren = false;
 static bool g_skip_arrow_detection_once = false;
 static bool g_async_allows_function_decl = false;
+static bool g_lex_error = false;
 
 // 跟踪括号层级及控制语句的条件括号，用于避免在 if(...) 等后面误插入分号
 #define CONTROL_STACK_MAX 64
@@ -565,6 +566,7 @@ void parser_set_input(const char *input) {
     g_brace_top = 0;
     g_conditional_top = 0;
     g_last_token_conditional_colon = false;
+    g_lex_error = false;
 }
 
 // bison 调用的词法函数
