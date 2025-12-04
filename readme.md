@@ -1,5 +1,15 @@
 # JavaScript Compiler (C Implementation)
 
+如果您想自己手动构建项目     解压bin.rar   后放入项目根目录下   然后按照教程操作即可
+
+项目结构如下示例
+
+```
+js_compiler_by_c
+	\bin
+	\其他
+```
+
 Use the expanders below to view the README in your preferred language.
 
 <details open>
