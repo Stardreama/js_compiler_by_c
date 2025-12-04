@@ -17,11 +17,11 @@ int yylex(void);
 void yyerror(const char *s);
 
 #ifndef YYMAXDEPTH
-#define YYMAXDEPTH 16000000 /* Allow deeper GLR stacks for dense member/call chains */
+#define YYMAXDEPTH 1000000 /* Allow deeper GLR stacks for dense member/call chains */
 #endif
 
 #ifndef YYINITDEPTH
-#define YYINITDEPTH 5120000   /* Start with a larger pool to reduce early reallocations */
+#define YYINITDEPTH 16000   /* Start with a larger pool to reduce early reallocations */
 #endif
 
 static ASTNode *g_parser_ast_root = NULL;
